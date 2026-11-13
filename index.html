@@ -288,7 +288,10 @@
     if(!dot||!txt)return;
     var map={
       checking:["var(--muted)","Speicher wird geprüft …"],
-      local:["var(--muted)","Nur lokal in diesem Browser gespeichert (nicht in der Cloud angemeldet)."],
+      local:["var(--muted)","Nur lokal gespeichert – Cloud-Datenbank in dieser Ansicht nicht verfügbar."],
+      local_file:["var(--muted)","Nur lokal – die Seite wurde als Datei geöffnet (kein Server-Sync)."],
+      local_nodb:["var(--warn)","Nur lokal – am Server ist noch keine Datenbank verbunden. Prüfen unter /api/status"],
+      local_unreachable:["var(--muted)","Nur lokal – der Server ist nicht erreichbar."],
       connecting:["var(--warn)","Verbinde mit Cloud …"],
       cloud:["var(--good)","☁ Cloud-Sync aktiv – deine Daten sind geräteübergreifend gespeichert."],
       cloud_slow:["var(--warn)","Cloud antwortet gerade nicht – angezeigte Daten evtl. nicht aktuell."],
@@ -364,13 +367,13 @@
     },5000);
   }
   async function initBackend(){
-    if(!/^https?:$/.test(location.protocol)){cloudState="local";updateCloudStatus();return;}
+    if(!/^https?:$/.test(location.protocol)){cloudState="local_file";updateCloudStatus();return;}
     cloudState="connecting";updateCloudStatus();
     try{
       var r=await fetch("/api/data",{cache:"no-store"});
       if(!r.ok)throw 0;
       var j=await r.json();
-      if(!j||!j.configured){backend=false;cloudState="local";updateCloudStatus();return;}
+      if(!j||!j.configured){backend=false;cloudState="local_nodb";updateCloudStatus();return;}
       backend=true;
       var remote=j.data||{projects:[],entries:[],updatedAt:0};
       var hasRemote=(remote.projects&&remote.projects.length)||(remote.entries&&remote.entries.length);
@@ -380,7 +383,7 @@
       else lastKnownUpdatedAt=remote.updatedAt||0;
       cloudState="cloud";updateCloudStatus();
       startBackendPoll();
-    }catch(e){backend=false;cloudState="local";updateCloudStatus();}
+    }catch(e){backend=false;cloudState="local_unreachable";updateCloudStatus();}
   }
 
   function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}

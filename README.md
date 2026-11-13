@@ -20,7 +20,7 @@ Die App erkennt automatisch, wo sie läuft, und wählt den passenden Speicher:
 | Umgebung | Daten-Sync über Geräte | Voraussetzung |
 |---|---|---|
 | **claude.ai-Artefakt** | ✅ automatisch | in claude.ai angemeldet (kein extra Login) |
-| **Vercel / eigener Webserver** | ✅ via `api/data` + Redis | einmalig Speicher verbinden → **siehe `SETUP.md`** |
+| **Vercel / eigener Webserver** | ✅ via `api/data` (Supabase *oder* Redis) | Datenbank am Projekt verbinden → **siehe `SETUP.md`** |
 | **Lokale `index.html` (`file://`)** | — nur lokal | — |
 
 Oben in der App zeigt eine Statuszeile den aktiven Modus (🟢 Cloud-Sync /

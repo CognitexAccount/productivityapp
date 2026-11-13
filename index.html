@@ -178,6 +178,7 @@
       <div class="bar cd-bar"><span id="cdBar" style="width:100%;background:var(--accent)"></span></div>
       <div class="cd-ctrls">
         <button class="btn-primary" id="cdStart">Start</button>
+        <button id="cdStop">Stoppen</button>
         <button id="cdReset">Zurücksetzen</button>
         <div class="spacer"></div>
         <label class="cd-opt" title="Legt nach Ablauf automatisch einen Eintrag über die eingestellte Zeit beim gewählten Projekt an.">
@@ -485,6 +486,18 @@
     save();renderCountdown();
   }
   function resetCountdown(){state.countdown=null;save();renderCountdown();}
+  function stopCountdown(){
+    var c=state.countdown;if(!c||c.finished)return;
+    var elapsedSec=Math.max(0,(c.totalSec||0)-cdRemaining());
+    var p=proj(c.projectId);var credited=0;
+    if(c.logOnFinish&&elapsedSec>=1&&p){
+      var ent={id:uid(),projectId:c.projectId,date:dateKey(today()),min:elapsedSec/60,note:"Countdown",ts:Date.now()};
+      state.entries.push(ent);pEntry(ent);credited=elapsedSec/60;
+    }
+    state.countdown=null;save();render();
+    if(credited>0)toast("Timer gestoppt – "+fmt(credited)+" gutgeschrieben"+(p?" ("+p.name+")":"")+".");
+    else toast("Timer gestoppt.");
+  }
   function finishCountdown(){
     var c=state.countdown;if(!c)return;
     c.running=false;c.remainingSec=0;c.finished=true;c.endAt=null;
@@ -523,6 +536,8 @@
     document.getElementById("cdSec").disabled=inputsDisabled;
     document.getElementById("cdLog").disabled=inputsDisabled;
     if(sel)sel.disabled=inputsDisabled;
+    var stopBtn=document.getElementById("cdStop");
+    if(stopBtn)stopBtn.style.display=(c&&!c.finished)?"":"none";
     if(c){
       var rem=cdRemaining();
       disp.textContent=fmtClock(rem);
@@ -731,6 +746,7 @@
       toast("Eingetragen.");
     };
     document.getElementById("cdStart").onclick=startCountdown;
+    document.getElementById("cdStop").onclick=stopCountdown;
     document.getElementById("cdReset").onclick=resetCountdown;
     document.getElementById("cdPresets").addEventListener("click",function(e){
       var b=e.target.closest("button[data-min]");if(!b)return;

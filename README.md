@@ -13,6 +13,23 @@ Eine schlanke, eigenständige Web-App zum Erfassen von Arbeitszeit pro Projekt �
 - **Heute-** und **Wochenansicht** mit Tagesbalken und Soll/Ist gegen das Wochenziel
 - **Export**: CSV (für deutsches Excel) und JSON-Backup, plus Backup-Import
 
+## Hosting-Varianten & Cloud-Sync
+
+Die App erkennt automatisch, wo sie läuft, und wählt den passenden Speicher:
+
+| Umgebung | Daten-Sync über Geräte | Voraussetzung |
+|---|---|---|
+| **claude.ai-Artefakt** | ✅ automatisch | in claude.ai angemeldet (kein extra Login) |
+| **Vercel / eigener Webserver** | ✅ via `api/data` + Redis | einmalig Speicher verbinden → **siehe `SETUP.md`** |
+| **Lokale `index.html` (`file://`)** | — nur lokal | — |
+
+Oben in der App zeigt eine Statuszeile den aktiven Modus (🟢 Cloud-Sync /
+⚪ nur lokal).
+
+> **Vercel-Sync ohne Login:** Es gibt keine Zugriffskontrolle – wer die URL
+> kennt, teilt denselben Datenstand. URL privat halten. Details und
+> Einrichtung in **`SETUP.md`**.
+
 ## Datenspeicherung
 
 - **Cloud-Sync (ohne Login):** Als Artefakt auf claude.ai werden Projekte und

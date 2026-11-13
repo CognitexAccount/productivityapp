@@ -251,11 +251,16 @@
   }
   function save(){
     try{localStorage.setItem(KEY,JSON.stringify({projects:state.projects,entries:state.entries,running:state.running,countdown:state.countdown}));}catch(e){}
+    if(backend&&!applyingRemote)scheduleBackendPush();
   }
 
   /* ---------- Cloud-Datenbank (optional, ohne Login) ---------- */
-  var cloud=null;            // DB-Namespace oder null
+  var cloud=null;            // DB-Namespace oder null (claude.ai-Artefakt)
   var cloudState="checking"; // checking | local | connecting | cloud | cloud_slow | error
+  var backend=false;         // eigener /api/data-Server aktiv (z. B. auf Vercel)
+  var applyingRemote=false;  // true, während Server-Daten übernommen werden
+  var lastKnownUpdatedAt=0;  // Zeitstempel des zuletzt bekannten Server-Stands
+  var pushTimer=null;
   function noop(){}
   function cloudFatal(e){
     var c=e&&e.code;
@@ -292,7 +297,7 @@
   }
 
   async function initCloud(){
-    if(!(window.claude&&window.claude.use)){cloudState="local";updateCloudStatus();return;}
+    if(!(window.claude&&window.claude.use)){initBackend();return;}
     cloudState="connecting";updateCloudStatus();
     try{cloud=await claude.use("db");}catch(e){cloud=null;}
     if(!cloud){cloudState="local";updateCloudStatus();return;}
@@ -317,6 +322,64 @@
       updateCloudStatus();save();render();
     },function(e){cloudFatal(e);cloudState="error";updateCloudStatus();});
     setTimeout(function(){if(cloudState==="connecting"){cloudState="cloud_slow";updateCloudStatus();}},10000);
+  }
+
+  /* ---------- Server-Sync über /api/data (ohne Login, z. B. auf Vercel) ---------- */
+  function scheduleBackendPush(){
+    if(!backend)return;
+    if(pushTimer)clearTimeout(pushTimer);
+    pushTimer=setTimeout(backendPush,800);
+  }
+  async function backendPush(){
+    pushTimer=null;if(!backend)return;
+    try{
+      var r=await fetch("/api/data",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({projects:state.projects,entries:state.entries})});
+      if(!r.ok)throw 0;
+      var j=await r.json();
+      if(j&&j.updatedAt)lastKnownUpdatedAt=j.updatedAt;
+      cloudState="cloud";updateCloudStatus();
+    }catch(e){cloudState="cloud_slow";updateCloudStatus();}
+  }
+  function applyRemote(remote){
+    if(!remote)return;
+    applyingRemote=true;
+    state.projects=Array.isArray(remote.projects)?remote.projects:[];
+    state.entries=Array.isArray(remote.entries)?remote.entries:[];
+    lastKnownUpdatedAt=remote.updatedAt||lastKnownUpdatedAt;
+    save();render();
+    applyingRemote=false;
+  }
+  function startBackendPoll(){
+    setInterval(async function(){
+      if(!backend||applyingRemote||pushTimer)return;
+      try{
+        var r=await fetch("/api/data",{cache:"no-store"});
+        if(!r.ok)return;
+        var j=await r.json();
+        if(j&&j.configured&&j.data&&j.data.updatedAt&&j.data.updatedAt!==lastKnownUpdatedAt)applyRemote(j.data);
+        if(cloudState==="cloud_slow"){cloudState="cloud";updateCloudStatus();}
+      }catch(e){}
+    },5000);
+  }
+  async function initBackend(){
+    if(!/^https?:$/.test(location.protocol)){cloudState="local";updateCloudStatus();return;}
+    cloudState="connecting";updateCloudStatus();
+    try{
+      var r=await fetch("/api/data",{cache:"no-store"});
+      if(!r.ok)throw 0;
+      var j=await r.json();
+      if(!j||!j.configured){backend=false;cloudState="local";updateCloudStatus();return;}
+      backend=true;
+      var remote=j.data||{projects:[],entries:[],updatedAt:0};
+      var hasRemote=(remote.projects&&remote.projects.length)||(remote.entries&&remote.entries.length);
+      var hasLocal=state.projects.length||state.entries.length;
+      if(hasRemote)applyRemote(remote);
+      else if(hasLocal){lastKnownUpdatedAt=0;await backendPush();}
+      else lastKnownUpdatedAt=remote.updatedAt||0;
+      cloudState="cloud";updateCloudStatus();
+      startBackendPoll();
+    }catch(e){backend=false;cloudState="local";updateCloudStatus();}
   }
 
   function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}

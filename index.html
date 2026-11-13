@@ -86,6 +86,8 @@
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
   .empty{color:var(--muted);font-size:13.5px;padding:8px 2px}
   .target-ok{color:var(--good)}
+  .status{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12.5px}
+  .status .dot{width:9px;height:9px}
   /* Countdown-Timer */
   .cd-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:4px}
   .cd-display{font-size:clamp(48px,14vw,76px);line-height:1;font-weight:680;
@@ -97,7 +99,6 @@
   .cd-ctrls{display:flex;gap:8px;align-items:center;width:100%;flex-wrap:wrap}
   .cd-opt{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer}
   .cd-opt input{width:auto}
-  .cd-finished{border-left:4px solid var(--danger)}
   @keyframes cdflash{0%,100%{background:var(--card)}50%{background:rgba(209,67,67,.16)}}
   .cd-flash{animation:cdflash .9s ease-in-out 3}
   #__toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);
@@ -113,13 +114,18 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="row" style="margin-bottom:16px">
+  <div class="row" style="margin-bottom:6px">
     <div>
       <h1>Projekt-Zeittracker</h1>
       <div class="sub" id="todayLabel"></div>
     </div>
     <div class="spacer"></div>
     <button class="btn-ghost btn-sm" id="manualToggle">+ Zeit nachtragen</button>
+  </div>
+
+  <div class="status" id="cloudStatus" title="Speicherort deiner Daten">
+    <span class="dot" id="cloudDot" style="background:var(--muted)"></span>
+    <span class="hint" id="cloudText">Speicher wird geprüft …</span>
   </div>
 
   <div class="card active-bar" id="activeBar" style="display:none"></div>
@@ -217,12 +223,12 @@
       <input type="file" id="impFile" accept="application/json,.json" style="display:none">
     </div>
     <div id="importConfirm" class="row" style="display:none;margin-top:12px">
-      <span class="muted">Import ersetzt alle aktuellen Daten in diesem Browser.</span>
+      <span class="muted">Import ersetzt alle aktuellen Daten (lokal und in der Cloud).</span>
       <div class="spacer"></div>
       <button class="btn-sm" id="impCancel">Abbrechen</button>
       <button class="btn-primary btn-sm" id="impConfirm">Ersetzen</button>
     </div>
-    <div class="hint" style="margin-top:10px">Alle Daten liegen nur lokal in diesem Browser. Für ein Backup oder den Wechsel auf ein anderes Gerät nutze den JSON-Export. Die CSV öffnet sich direkt in (deutschem) Excel.</div>
+    <div class="hint" style="margin-top:10px">Wenn du in claude.ai angemeldet bist, werden deine Projekte und Zeiten automatisch in der Cloud gespeichert und zwischen deinen Geräten synchronisiert — zusätzlich liegt eine lokale Kopie in diesem Browser. CSV/JSON dienen als Backup bzw. für Excel.</div>
   </div>
 </div>
 
@@ -230,11 +236,13 @@
 (function(){
   "use strict";
   var KEY="zeittracker_v1";
+  var PROJ="projects", ENT="entries";
   var PALETTE=["#2f6fde","#1f9d57","#d14343","#e07b1a","#8b5cf6","#0ea5b7","#db2777","#4f8f3a","#c99a16","#3aa0e0"];
   var WD=["Mo","Di","Mi","Do","Fr","Sa","So"];
   var state={projects:[],entries:[],running:null,weekOffset:0,countdown:null};
   var pendingImport=null;
 
+  /* ---------- lokale Kopie (Cache / Offline / Fallback) ---------- */
   function load(){
     try{var raw=localStorage.getItem(KEY);
       if(raw){var d=JSON.parse(raw);state.projects=d.projects||[];state.entries=d.entries||[];state.running=d.running||null;state.countdown=d.countdown||null;}
@@ -242,6 +250,72 @@
   }
   function save(){
     try{localStorage.setItem(KEY,JSON.stringify({projects:state.projects,entries:state.entries,running:state.running,countdown:state.countdown}));}catch(e){}
+  }
+
+  /* ---------- Cloud-Datenbank (optional, ohne Login) ---------- */
+  var cloud=null;            // DB-Namespace oder null
+  var cloudState="checking"; // checking | local | connecting | cloud | cloud_slow | error
+  function noop(){}
+  function cloudFatal(e){
+    var c=e&&e.code;
+    if(c==="revoked"||c==="not_granted"||c==="capability_disabled"||c==="capability_removed"){
+      cloud=null;cloudState="local";updateCloudStatus();
+    }
+  }
+  function cloudWrite(mk){
+    if(!cloud)return;
+    try{
+      mk().catch(function(e){
+        if(e&&e.code==="unavailable"){setTimeout(function(){if(cloud){try{mk().catch(cloudFatal);}catch(_){}}},1600);}
+        else cloudFatal(e);
+      });
+    }catch(e){cloudFatal(e);}
+  }
+  function pProject(p){cloudWrite(function(){return cloud.collection(PROJ).doc(p.id).set(p);});}
+  function pDelProject(id){cloudWrite(function(){return cloud.collection(PROJ).doc(id).delete();});}
+  function pEntry(e){cloudWrite(function(){return cloud.collection(ENT).doc(e.id).set(e);});}
+  function pDelEntry(id){cloudWrite(function(){return cloud.collection(ENT).doc(id).delete();});}
+
+  function updateCloudStatus(){
+    var dot=document.getElementById("cloudDot"),txt=document.getElementById("cloudText");
+    if(!dot||!txt)return;
+    var map={
+      checking:["var(--muted)","Speicher wird geprüft …"],
+      local:["var(--muted)","Nur lokal in diesem Browser gespeichert (nicht in der Cloud angemeldet)."],
+      connecting:["var(--warn)","Verbinde mit Cloud …"],
+      cloud:["var(--good)","☁ Cloud-Sync aktiv – deine Daten sind geräteübergreifend gespeichert."],
+      cloud_slow:["var(--warn)","Cloud antwortet gerade nicht – angezeigte Daten evtl. nicht aktuell."],
+      error:["var(--danger)","Cloud nicht erreichbar – es wird lokal gespeichert."]
+    };
+    var m=map[cloudState]||map.local;dot.style.background=m[0];txt.textContent=m[1];
+  }
+
+  async function initCloud(){
+    if(!(window.claude&&window.claude.use)){cloudState="local";updateCloudStatus();return;}
+    cloudState="connecting";updateCloudStatus();
+    try{cloud=await claude.use("db");}catch(e){cloud=null;}
+    if(!cloud){cloudState="local";updateCloudStatus();return;}
+    // Erst-Migration: wenn die Cloud leer ist, lokale Daten hochladen
+    try{
+      var ps=await cloud.collection(PROJ).get();
+      var es=await cloud.collection(ENT).get();
+      if(ps.empty&&es.empty&&(state.projects.length||state.entries.length)){
+        for(var i=0;i<state.projects.length;i++){await cloud.collection(PROJ).doc(state.projects[i].id).set(state.projects[i]);}
+        for(var j=0;j<state.entries.length;j++){await cloud.collection(ENT).doc(state.entries[j].id).set(state.entries[j]);}
+      }
+    }catch(e){cloudFatal(e);if(!cloud){return;}}
+    // Live abonnieren (Projekte + Einträge)
+    cloud.collection(PROJ).onSnapshot(function(snap){
+      state.projects=snap.docs.map(function(d){return d.data();});
+      if(!snap.metadata.fromCache){cloudState="cloud";}
+      updateCloudStatus();save();render();
+    },function(e){cloudFatal(e);cloudState="error";updateCloudStatus();});
+    cloud.collection(ENT).onSnapshot(function(snap){
+      state.entries=snap.docs.map(function(d){return d.data();});
+      if(!snap.metadata.fromCache){cloudState="cloud";}
+      updateCloudStatus();save();render();
+    },function(e){cloudFatal(e);cloudState="error";updateCloudStatus();});
+    setTimeout(function(){if(cloudState==="connecting"){cloudState="cloud_slow";updateCloudStatus();}},10000);
   }
 
   function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
@@ -300,15 +374,17 @@
     var used={};state.projects.forEach(function(p){used[p.color]=1;});
     var color=PALETTE.find(function(c){return !used[c];})||PALETTE[state.projects.length%PALETTE.length];
     var tgt=targetH>0?Math.round(targetH*60):null;
-    state.projects.push({id:uid(),name:name,color:color,weeklyTargetMin:tgt,createdAt:Date.now()});
-    save();render();
+    var np={id:uid(),name:name,color:color,weeklyTargetMin:tgt,createdAt:Date.now()};
+    state.projects.push(np);save();render();pProject(np);
   }
   function removeProject(id){
+    var remIds=state.entries.filter(function(e){return e.projectId===id;}).map(function(e){return e.id;});
     state.projects=state.projects.filter(function(p){return p.id!==id;});
     state.entries=state.entries.filter(function(e){return e.projectId!==id;});
     if(state.running&&state.running.projectId===id)state.running=null;
     if(state.countdown&&state.countdown.projectId===id)state.countdown=null;
     save();render();
+    pDelProject(id);remIds.forEach(pDelEntry);
   }
   function toggleTimer(id){
     if(state.running&&state.running.projectId===id){stopTimer();return;}
@@ -316,14 +392,14 @@
     state.running={projectId:id,startedAt:Date.now()};save();render();
   }
   function stopTimer(silent){
-    if(!state.running)return;var min=runMin();
-    if(min>=0.02)state.entries.push({id:uid(),projectId:state.running.projectId,date:dateKey(today()),min:min,note:"",ts:Date.now()});
-    state.running=null;save();if(!silent)render();
+    if(!state.running)return;var min=runMin();var ent=null;
+    if(min>=0.02){ent={id:uid(),projectId:state.running.projectId,date:dateKey(today()),min:min,note:"",ts:Date.now()};state.entries.push(ent);}
+    state.running=null;save();if(ent)pEntry(ent);if(!silent)render();
   }
-  function addManual(pid,dkey,min,note){state.entries.push({id:uid(),projectId:pid,date:dkey,min:min,note:note||"",ts:Date.now(),manual:true});save();render();}
-  function delEntry(id){state.entries=state.entries.filter(function(e){return e.id!==id;});save();render();}
+  function addManual(pid,dkey,min,note){var ent={id:uid(),projectId:pid,date:dkey,min:min,note:note||"",ts:Date.now(),manual:true};state.entries.push(ent);save();pEntry(ent);render();}
+  function delEntry(id){state.entries=state.entries.filter(function(e){return e.id!==id;});save();pDelEntry(id);render();}
 
-  /* ---------- Countdown-Timer ---------- */
+  /* ---------- Countdown-Timer (laufender Zustand bleibt geräte-lokal) ---------- */
   function cdRemaining(){
     var c=state.countdown;if(!c)return 0;
     if(c.running&&c.endAt)return Math.max(0,(c.endAt-Date.now())/1000);
@@ -331,15 +407,8 @@
   }
   function startCountdown(){
     var c=state.countdown;
-    // Pause, wenn gerade läuft
-    if(c&&c.running){
-      c.remainingSec=cdRemaining();c.running=false;c.endAt=null;save();renderCountdown();return;
-    }
-    // Fortsetzen nach Pause
-    if(c&&!c.finished&&c.remainingSec>0.4){
-      ensureAudio();c.running=true;c.endAt=Date.now()+c.remainingSec*1000;save();renderCountdown();return;
-    }
-    // Neu starten
+    if(c&&c.running){c.remainingSec=cdRemaining();c.running=false;c.endAt=null;save();renderCountdown();return;}
+    if(c&&!c.finished&&c.remainingSec>0.4){ensureAudio();c.running=true;c.endAt=Date.now()+c.remainingSec*1000;save();renderCountdown();return;}
     var pid=document.getElementById("cdProj").value;
     if(!pid){toast("Bitte zuerst ein Projekt anlegen und auswählen.");return;}
     var m=parseInt(document.getElementById("cdMin").value,10)||0;
@@ -347,7 +416,7 @@
     var total=m*60+s;
     if(total<=0){toast("Bitte eine Zeit größer als 0 einstellen.");return;}
     ensureAudio();
-    state.countdown={projectId:pid,totalSec:total,remainingSec:total,endAt:Date.now()+total*1000,
+    state.countdown={id:uid(),projectId:pid,totalSec:total,remainingSec:total,endAt:Date.now()+total*1000,
       running:true,finished:false,logOnFinish:document.getElementById("cdLog").checked};
     save();renderCountdown();
   }
@@ -357,7 +426,10 @@
     c.running=false;c.remainingSec=0;c.finished=true;c.endAt=null;
     if(c.logOnFinish){
       var p=proj(c.projectId);
-      if(p){state.entries.push({id:uid(),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()});}
+      if(p){var ent={id:"cd_"+(c.id||uid()),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()};
+        var ix=state.entries.map(function(x){return x.id;}).indexOf(ent.id);
+        if(ix>=0)state.entries[ix]=ent;else state.entries.push(ent);
+        pEntry(ent);}
     }
     save();
     beep();
@@ -388,7 +460,7 @@
     document.getElementById("cdLog").disabled=inputsDisabled;
     if(sel)sel.disabled=inputsDisabled;
     if(c){
-      var rem=cdRemaining();var p=proj(c.projectId);
+      var rem=cdRemaining();
       disp.textContent=fmtClock(rem);
       disp.className="cd-display mono"+(c.finished?" done":(running?" run":""));
       var pct=c.totalSec>0?Math.max(0,Math.min(100,rem/c.totalSec*100)):0;
@@ -543,12 +615,33 @@
     return "﻿"+rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(";");}).join("\r\n");
   }
 
+  function doImport(){
+    if(!pendingImport)return;
+    var oldProjIds=state.projects.map(function(p){return p.id;});
+    var oldEntIds=state.entries.map(function(e){return e.id;});
+    state.projects=pendingImport.projects||[];
+    state.entries=pendingImport.entries||[];
+    state.running=pendingImport.running||null;
+    state.countdown=pendingImport.countdown||null;
+    pendingImport=null;document.getElementById("importConfirm").style.display="none";
+    save();render();
+    if(cloud){
+      var keepP={};state.projects.forEach(function(p){keepP[p.id]=1;});
+      var keepE={};state.entries.forEach(function(e){keepE[e.id]=1;});
+      oldProjIds.forEach(function(id){if(!keepP[id])pDelProject(id);});
+      oldEntIds.forEach(function(id){if(!keepE[id])pDelEntry(id);});
+      state.projects.forEach(pProject);
+      state.entries.forEach(pEntry);
+    }
+    toast("Backup importiert.");
+  }
+
   function init(){
     load();
     // Beim Laden: abgelaufenen Countdown sauber abschließen (ohne Ton, da kein Nutzer-Klick)
     if(state.countdown&&state.countdown.running&&cdRemaining()<=0){
       var c=state.countdown;c.running=false;c.remainingSec=0;c.finished=true;c.endAt=null;
-      if(c.logOnFinish){var p=proj(c.projectId);if(p)state.entries.push({id:uid(),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()});}
+      if(c.logOnFinish){var p=proj(c.projectId);if(p){var e0={id:"cd_"+(c.id||uid()),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()};state.entries.push(e0);}}
       save();
     }
     document.getElementById("mDate").value=dateKey(today());
@@ -573,7 +666,6 @@
       document.getElementById("mH").value=0;document.getElementById("mM").value=0;document.getElementById("mNote").value="";
       toast("Eingetragen.");
     };
-    // Countdown-Steuerung
     document.getElementById("cdStart").onclick=startCountdown;
     document.getElementById("cdReset").onclick=resetCountdown;
     document.getElementById("cdPresets").addEventListener("click",function(e){
@@ -600,12 +692,10 @@
       rd.readAsText(f);e.target.value="";
     };
     document.getElementById("impCancel").onclick=function(){pendingImport=null;document.getElementById("importConfirm").style.display="none";};
-    document.getElementById("impConfirm").onclick=function(){
-      if(!pendingImport)return;
-      state.projects=pendingImport.projects||[];state.entries=pendingImport.entries||[];state.running=pendingImport.running||null;state.countdown=pendingImport.countdown||null;
-      pendingImport=null;document.getElementById("importConfirm").style.display="none";save();render();toast("Backup importiert.");
-    };
+    document.getElementById("impConfirm").onclick=doImport;
     render();
+    updateCloudStatus();
+    initCloud();
     setInterval(function(){if(state.running){var t=document.getElementById("activeTime");if(t)t.textContent=fmt(runMin());}},1000);
     setInterval(tickCountdown,250);
     setInterval(function(){if(state.running){renderProjects();renderToday();renderWeek();}},15000);

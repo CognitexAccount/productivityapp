@@ -15,12 +15,23 @@ Eine schlanke, eigenständige Web-App zum Erfassen von Arbeitszeit pro Projekt �
 
 ## Datenspeicherung
 
-Alle Daten liegen **lokal im Browser** (`localStorage`) auf dem jeweiligen Gerät.
-Für Backup oder Gerätewechsel den **JSON-Export** nutzen.
+- **Cloud-Sync (ohne Login):** Als Artefakt auf claude.ai werden Projekte und
+  erfasste Zeiten in der **Cloud-Datenbank des Artefakts** gespeichert und
+  zwischen deinen Geräten synchronisiert. Es ist kein separater Login nötig —
+  genutzt wird, dass du in claude.ai angemeldet bist; das Artefakt ist privat.
+  Vorhandene lokale Daten werden beim ersten Start automatisch in die Cloud
+  übernommen.
+- **Lokale Kopie / Offline:** Zusätzlich liegt eine Kopie im Browser
+  (`localStorage`). Ohne Cloud-Zugang (z. B. als reine `index.html` lokal
+  geöffnet) arbeitet die App rein lokal weiter.
+- **Backup/Export:** CSV (deutsches Excel) und JSON-Backup mit Import.
 
-> Hinweis: Eine echte geräteübergreifende Cloud-Synchronisation (gemeinsamer
-> Account, automatischer Sync) ist noch nicht enthalten — dafür wäre ein
-> Backend nötig. Der Code selbst ist über dieses Repository in der Cloud gesichert.
+Der aktuelle Cloud-Status wird oben in der App angezeigt (grün = Cloud-Sync
+aktiv, grau = nur lokal).
+
+> Hinweis: Der *gerade laufende* Timer/Countdown-Zustand bleibt an das Gerät
+> gebunden, auf dem gestartet wurde — die **Ergebnisse (Einträge)** werden in
+> die Cloud synchronisiert.
 
 ## Nutzung
 

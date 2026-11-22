@@ -135,7 +135,7 @@ export async function buildPdf(vid) {
             [{ text: "", style: "th" }, { text: "Aufgabe", style: "th" }, { text: "Dauer", style: "th" }, { text: "Fällig", style: "th" }, { text: "Erfasst", style: "th" }],
             ...todos.map((t) => {
               const m = live("timeEntries").filter((e) => e.todoId === t.id).reduce((s, e) => s + (e.min || 0), 0);
-              return [t.done ? "✓" : "", { text: t.title, decoration: t.done ? "lineThrough" : undefined, color: t.done ? "#888" : undefined },
+              return [{ text: t.done ? "[x]" : "[  ]", bold: true, color: t.done ? "#1f9d57" : "#8a929e" }, { text: t.title, decoration: t.done ? "lineThrough" : undefined, color: t.done ? "#888" : undefined },
                 (t.est || DEFAULT_EST) + " Min", t.due ? fmtShort(t.due) : "–", m >= 1 ? fmtHM(m) + " h" : "–"];
             }),
           ],

@@ -1,6 +1,8 @@
 // Datenmodell-Konstanten, Leitfragen und Datums-Helfer des Projektsystems.
 
 export const STATUS = ["Idee", "Vorbereitung", "Läuft", "Abschluss-Review", "Abgeschlossen"];
+export const EST_OPTIONS = [5, 15, 30, 60]; // Zeitangabe eines To-Dos in Minuten
+export const DEFAULT_EST = 30;
 export const STATUS_LABEL = { "Idee": "Ideen-Park" };
 export const ACTIVE = ["Vorbereitung", "Läuft"];
 

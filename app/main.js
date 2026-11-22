@@ -1,14 +1,17 @@
 // Einstieg: App-Rahmen, Routing, Rendern, laufender Timer, Fristwächter.
 
-import { h, icon, toast, confirmDialog, isMobile } from "./ui.js";
-import { STATUS_LABEL, todayKey, fmtClock, fmtShort } from "./model.js";
+import { h, icon, toast, confirmDialog, isMobile, modal } from "./ui.js";
+import { STATUS_LABEL, FIELD, todayKey, fmtClock, fmtShort, fmtHM } from "./model.js";
 import {
   store, subscribe, loadCache, initSync, ensureDefaultAreas, byId, live, areas, patch, settings,
-  overdueVorhaben, onPinRequired,
+  overdueVorhaben, onPinRequired, finishCountdown, countdownEnd, toggleTodo, setField, notify as notifyState,
 } from "./state.js";
 import { ui, setRender, go, persistUi } from "./nav.js";
-import { setStatusChanger, timerButton } from "./components.js";
-import { setWizardOpener, outlineFields } from "./fields.js";
+import { setStatusChanger, timerButton, startTimerUI } from "./components.js";
+import { setWizardOpener } from "./fields.js";
+import { onlyHeadings } from "./editor.js";
+import { ALARM_SEC, scheduleAlarm, cancelAlarm, isScheduled, syncAlarm, vibrate, notify } from "./alarm.js";
+import { openTimeEntry } from "./timeentry.js";
 import { openWizard } from "./wizard.js";
 import { openCapture } from "./capture.js";
 import { openSettings, pinPrompt } from "./settings.js";
@@ -49,12 +52,9 @@ setStatusChanger(async (vid, status) => {
   if (!v || v.status === status) return;
   const changes = { status };
   const promoted = v.status === "Idee" && status !== "Idee";
-  if (promoted) {
-    changes.fields = outlineFields(v.fields);
-    if (!v.start && (status === "Vorbereitung" || status === "Läuft")) changes.start = todayKey();
-  }
+  if (promoted && !v.start && (status === "Vorbereitung" || status === "Läuft")) changes.start = todayKey();
   patch("vorhaben", vid, changes);
-  if (promoted) toast("Befördert – die Leitfragen sind als Gliederung angelegt");
+  if (promoted) toast("Zum Vorhaben befördert");
   if (status === "Läuft") {
     const n = live("vorhaben").filter((x) => x.status === "Läuft").length, wip = settings().wipLimit || 3;
     if (n > wip) toast("Achtung: " + n + " Vorhaben laufen parallel (WIP-Grenze " + wip + ")");
@@ -106,17 +106,59 @@ function areaFilter(cls) {
     areas().map((a) => h("option", { value: a.id }, a.name)));
 }
 
+// Anzeige des laufenden Timers: Countdown (Restzeit) oder Stoppuhr (verstrichen)
+function runText(r) {
+  return r.dur ? "noch " + fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000);
+}
+const runPct = (r) => (r.dur ? Math.min(100, ((Date.now() - r.start) / (r.dur * 1000)) * 100) : 0);
+
 function runbar() {
   const r = store.state.running;
   if (!r || !r.start) return null;
   const v = byId("vorhaben", r.vorhabenId), t = r.todoId ? byId("todos", r.todoId) : null;
-  return h("div", { class: "runbar" },
+  return h("div", { class: "runbar" + (r.dur ? " countdown" : "") },
     h("span", { class: "pulse" }),
     h("div", { class: "run-info" },
-      h("div", { class: "run-what clamp1" }, t ? t.title : "Am Vorhaben"),
+      h("div", { class: "run-what clamp1" }, t ? t.title : "Stoppuhr am Vorhaben"),
       v ? h("a", { class: "run-v clamp1", href: "#/v/" + v.id }, v.title) : null),
-    h("span", { class: "run-time num", id: "runTime" }, fmtClock((Date.now() - r.start) / 1000)),
-    timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, label: "Stopp" }));
+    h("span", { class: "run-time num", id: "runTime" }, runText(r)),
+    timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, label: "Stopp" }),
+    r.dur ? h("span", { class: "run-progress", id: "runBar", style: { width: runPct(r) + "%" } }) : null);
+}
+
+/* ── Countdown abgelaufen: Alarm-Dialog ── */
+let alarmClose = null;
+function showAlarm(info) {
+  const t = info.todoId ? byId("todos", info.todoId) : null;
+  const v = byId("vorhaben", info.vorhabenId);
+  const what = t ? t.title : (v && v.title) || "Countdown";
+  if (!isScheduled() || Date.now() > info.end + 5000) scheduleAlarm(Date.now()); // z. B. nach Neuladen
+  vibrate();
+  notify("⏰ Zeit ist um", what + " – " + fmtHM(info.dur / 60) + " h gebucht");
+  if (alarmClose) alarmClose();
+  const stopAll = () => { cancelAlarm(); };
+  alarmClose = modal({
+    title: "⏰ Zeit ist um",
+    body: h("div", { class: "alarm" },
+      h("div", { class: "alarm-icon" }, icon("bell")),
+      h("div", { class: "alarm-what" }, what),
+      v && t ? h("div", { class: "muted small" }, v.title) : null,
+      h("p", { class: "muted small" }, fmtHM(info.dur / 60) + " h wurden gebucht. Der Signalton läuft bis zu " + Math.round(ALARM_SEC / 60) + " Minuten, wenn du ihn nicht ausstellst.")),
+    actions: [
+      { label: "+5 Min", onClick: (c) => { stopAll(); c(); startTimerUI({ vorhabenId: info.vorhabenId, todoId: info.todoId, dur: 5 * 60 }); } },
+      t && !t.done ? { label: "Erledigt ✓", onClick: (c) => { stopAll(); c(); toggleTodo(t.id, true); toast("To-Do erledigt"); } } : null,
+      { label: "Alarm aus", primary: true, onClick: (c) => { stopAll(); c(); } },
+    ].filter(Boolean),
+    onClose: () => { cancelAlarm(); alarmClose = null; },
+  });
+}
+function checkCountdown() {
+  const end = countdownEnd();
+  if (!end || Date.now() < end) return;
+  const info = finishCountdown();
+  if (!info) return;
+  if (Date.now() - info.end < 5 * 60000) showAlarm(info);
+  else toast("Countdown war während deiner Abwesenheit abgelaufen – " + fmtHM(info.dur / 60) + " h gebucht");
 }
 
 function banner() {
@@ -134,7 +176,7 @@ function moreSheet() {
   const pick = (fn) => () => { back.remove(); fn(); };
   back.append(h("div", { class: "sheet" },
     NAV.filter((n) => !MOBILE_TABS.includes(n.r)).map((n) => h("button", { class: "sheet-item", onclick: pick(() => go("#/" + n.r)) }, icon(n.ic), n.label)),
-    h("a", { class: "sheet-item", href: "/tracker" }, icon("tracker"), "Alter Zeittracker"),
+    h("button", { class: "sheet-item", onclick: pick(() => openTimeEntry()) }, icon("clock"), "Zeit nachtragen"),
     h("button", { class: "sheet-item", onclick: pick(openSettings) }, icon("settings"), "Einstellungen"),
     h("button", { class: "sheet-item muted", onclick: () => back.remove() }, "Schließen")));
   document.body.append(back);
@@ -152,8 +194,8 @@ function shell() {
     h("nav", { class: "nav", "aria-label": "Ansichten" }, navLinks),
     h("div", { class: "side-sec" }, h("div", { class: "side-lbl" }, "Bereich"), areaFilter()),
     h("button", { class: "btn idea-btn", onclick: openCapture }, icon("idea"), "Idee parken"),
+    h("button", { class: "btn idea-btn", onclick: () => openTimeEntry() }, icon("clock"), "Zeit nachtragen"),
     h("div", { class: "side-foot" },
-      h("a", { class: "nav-item small", href: "/tracker" }, icon("tracker"), h("span", null, "Alter Zeittracker")),
       h("button", { class: "nav-item small", onclick: openSettings }, icon("settings"), h("span", null, "Einstellungen")),
       syncBadge()));
 
@@ -202,6 +244,7 @@ setRender(render);
 
 subscribe((reason) => {
   if (reason === "sync") { updateSyncBadges(); return; }
+  syncAlarm(countdownEnd()); // auf anderem Gerät gestoppt → geplanten Ton absagen
   requestRender();
 });
 
@@ -213,19 +256,46 @@ window.addEventListener("hashchange", () => {
   window.scrollTo(0, 0);
 });
 
-// Uhr für laufenden Timer
+// Uhr für laufenden Timer + Countdown-Ende
 setInterval(() => {
+  checkCountdown();
   const r = store.state.running;
   if (!r || !r.start) return;
-  const txt = fmtClock((Date.now() - r.start) / 1000);
-  ["runTime", "focusTime"].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = txt; });
+  const rt = document.getElementById("runTime");
+  if (rt) rt.textContent = runText(r);
+  const ft = document.getElementById("focusTime");
+  if (ft) ft.textContent = r.dur ? fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000);
+  ["runBar", "focusBar"].forEach((id) => { const el = document.getElementById(id); if (el) el.style.width = runPct(r) + "%"; });
 }, 1000);
+
+// Nach Neuladen oder auf einem zweiten Gerät: Signalton beim ersten Tippen nachträglich einplanen
+// (Browser erlauben Ton erst nach einer Interaktion).
+document.addEventListener("pointerdown", () => {
+  const end = countdownEnd();
+  if (end && Date.now() < end && !isScheduled()) scheduleAlarm(end);
+}, true);
+
+// Früher automatisch eingefügte, leer gebliebene Leitfragen-Gliederungen entfernen
+function cleanupOutlines() {
+  let n = 0;
+  live("vorhaben").forEach((v) => {
+    ["ressourcen", "lernen", "versuch", "uebergabe"].forEach((k) => {
+      const html = (v.fields || {})[k];
+      if (!html || !onlyHeadings(html)) return;
+      const qs = FIELD[k].hints;
+      const d = document.createElement("div"); d.innerHTML = html;
+      const heads = Array.from(d.querySelectorAll("h3,h4")).map((x) => x.textContent.trim());
+      if (heads.length && heads.every((q) => qs.includes(q))) { setField(v.id, k, ""); n++; }
+    });
+  });
+  if (n) notifyState();
+}
 
 // Start
 loadCache();
 parseRoute();
 render();
-initSync().then(() => { ensureDefaultAreas(); });
+initSync().then(() => { ensureDefaultAreas(); cleanupOutlines(); checkCountdown(); });
 
 // Tastenkürzel: "i" = Idee parken (außerhalb von Eingabefeldern)
 document.addEventListener("keydown", (e) => {

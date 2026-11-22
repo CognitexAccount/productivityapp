@@ -6,7 +6,7 @@
 // geschickt. Der Server führt pro Eintrag zusammen (shared/sync.js), dadurch
 // können mehrere Geräte parallel arbeiten, ohne sich Änderungen zu überschreiben.
 
-import { DEFAULT_AREAS, ACTIVE, todayKey, dateKey, diffDays } from "./model.js";
+import { DEFAULT_AREAS, ACTIVE, DEFAULT_EST, todayKey, dateKey, diffDays } from "./model.js";
 
 const S = window.SyncMerge;
 const CACHE = "projektsystem_v1";
@@ -159,35 +159,52 @@ export function setAbschluss(vid, changes, opts) {
   if (!v) return;
   patch("vorhaben", vid, { abschluss: { ...(v.abschluss || {}), ...changes } }, opts);
 }
-export function addTodo(vorhabenId, title, due) {
+export function addTodo(vorhabenId, title, due, est) {
   title = (title || "").trim();
   if (!title || !vorhabenId) return null;
-  return upsert("todos", { id: uid(), vorhabenId, title, due: due || "", done: false, created: Date.now() });
+  return upsert("todos", { id: uid(), vorhabenId, title, due: due || "", est: est || DEFAULT_EST, done: false, created: Date.now() });
 }
 export function toggleTodo(id, done) {
   patch("todos", id, { done, doneAt: done ? Date.now() : null });
 }
 
-export function startTimer({ vorhabenId, todoId = null }) {
+// dur = Countdown-Dauer in Sekunden (To-Do), null = offene Stoppuhr (Vorhaben)
+export function startTimer({ vorhabenId, todoId = null, dur = null }) {
   const r = store.state.running;
   if (r && r.start) stopTimer({ silent: true });
-  setSingleton("running", { start: Date.now(), vorhabenId, todoId });
+  setSingleton("running", { start: Date.now(), vorhabenId, todoId, dur: dur || null });
+}
+// Die Eintrags-ID hängt am Startzeitpunkt: stoppen zwei Geräte denselben Lauf,
+// entsteht trotzdem nur ein Eintrag.
+function bookRun(r, end, min) {
+  return upsert("timeEntries", {
+    id: "run_" + r.start, vorhabenId: r.vorhabenId, todoId: r.todoId || null,
+    start: r.start, end, min, date: dateKey(new Date(r.start)),
+  }, { silent: true });
 }
 export function stopTimer(opts) {
   const r = store.state.running;
   if (!r || !r.start) return null;
-  const end = Date.now();
+  const end = r.dur ? Math.min(Date.now(), r.start + r.dur * 1000) : Date.now();
   const min = (end - r.start) / 60000;
-  let entry = null;
-  if (min >= 0.25) {
-    entry = upsert("timeEntries", {
-      id: uid(), vorhabenId: r.vorhabenId, todoId: r.todoId || null,
-      start: r.start, end, min, date: dateKey(new Date(r.start)),
-    }, { silent: true });
-  }
+  const entry = min >= 0.25 ? bookRun(r, end, min) : null;
   setSingleton("running", { start: null }, opts);
   return { min, entry };
 }
+// Countdown abgelaufen: volle Dauer buchen und Timer beenden
+export function finishCountdown() {
+  const r = store.state.running;
+  if (!r || !r.start || !r.dur) return null;
+  const end = r.start + r.dur * 1000;
+  if (Date.now() < end) return null;
+  const entry = bookRun(r, end, r.dur / 60);
+  setSingleton("running", { start: null });
+  return { ...r, end, entry };
+}
+export const countdownEnd = () => {
+  const r = store.state.running;
+  return r && r.start && r.dur ? r.start + r.dur * 1000 : null;
+};
 export function addEntry({ vorhabenId, todoId = null, date, min, note = "" }) {
   if (!vorhabenId || !(min > 0)) return null;
   return upsert("timeEntries", { id: uid(), vorhabenId, todoId, date: date || todayKey(), min, note, manual: true });

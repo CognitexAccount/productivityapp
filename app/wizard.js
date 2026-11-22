@@ -1,10 +1,10 @@
 // Abschluss-Assistent: führt Schritt für Schritt durch den sauberen Abschluss.
 
 import { h, modal, toast } from "./ui.js";
-import { FIELD, OUTCOMES, ABSCHLUSS_CHECKS } from "./model.js";
+import { OUTCOMES, ABSCHLUSS_CHECKS } from "./model.js";
 import { byId, patch, setField, setAbschluss } from "./state.js";
-import { editor, outlineHtml } from "./editor.js";
-import { hintsBox, resistanceText } from "./fields.js";
+import { editor } from "./editor.js";
+import { hintsBox, hintsFor, resistanceText } from "./fields.js";
 
 const STEPS = ["Ergebnis", "Warum beendet?", "Checkliste", "Lessons Learned", "Feiern"];
 
@@ -17,11 +17,9 @@ export function openWizard(vid) {
   const ab = () => (v() && v().abschluss) || {};
 
   function fieldStep(key) {
-    const f = FIELD[key];
     const html = (v().fields || {})[key] || "";
-    const ed = editor({ html, placeholder: f.hints[0], minHeight: "180px", onChange: (val) => setField(vid, key, val) });
-    const insert = () => { const o = outlineHtml(f.hints); ed.setValue(o); setField(vid, key, o); ed.focusEnd(); };
-    return h("div", null, hintsBox(f, ed, html, insert), ed);
+    const ed = editor({ html, placeholder: hintsFor(key)[0] || "", minHeight: "180px", onChange: (val) => setField(vid, key, val) });
+    return h("div", null, hintsBox(key), ed);
   }
 
   function radio(name, val, label, on) {

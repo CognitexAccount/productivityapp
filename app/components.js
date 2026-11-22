@@ -1,7 +1,8 @@
 // Bausteine, die mehrere Ansichten teilen.
 
 import { h, icon, toast } from "./ui.js";
-import { STATUS, STATUS_LABEL, fmtShort, fmtHM, todayKey, diffDays } from "./model.js";
+import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, todayKey, diffDays } from "./model.js";
+import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify } from "./alarm.js";
 import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, patch, removeItem } from "./state.js";
 import { openVorhaben, persistUi } from "./nav.js";
 import { onlyHeadings } from "./editor.js";
@@ -50,23 +51,45 @@ export function isRunning(todoId, vorhabenId) {
   return r.vorhabenId === vorhabenId && !r.todoId;
 }
 
-export function timerButton({ todoId = null, vorhabenId, big = false, label }) {
+// Timer starten: mit dur (Sekunden) als Countdown inkl. eingeplantem Signalton,
+// ohne dur als offene Stoppuhr.
+export function startTimerUI({ vorhabenId, todoId = null, dur = null }) {
+  startTimer({ vorhabenId, todoId, dur });
+  if (dur) {
+    ensureAudio();
+    scheduleAlarm(store.state.running.start + dur * 1000);
+    askNotify();
+    toast("Countdown läuft – " + Math.round(dur / 60) + " Min");
+  } else {
+    cancelAlarm();
+    toast("Stoppuhr läuft");
+  }
+}
+export function stopTimerUI() {
+  cancelAlarm();
+  const r = stopTimer();
+  if (r && r.entry) toast("Gestoppt – " + fmtHM(r.min) + " h gebucht");
+  else toast("Gestoppt");
+}
+
+export function timerButton({ todoId = null, vorhabenId, dur = null, big = false, label }) {
   const on = isRunning(todoId, vorhabenId);
   return h("button", {
     class: "play" + (on ? " on" : "") + (big ? " big" : ""),
-    title: on ? "Timer stoppen" : "Timer starten",
+    title: on ? "Timer stoppen" : dur ? "Countdown starten (" + Math.round(dur / 60) + " Min)" : "Stoppuhr starten",
     "aria-label": on ? "Timer stoppen" : "Timer starten",
     onclick: (e) => {
       e.stopPropagation();
-      if (on) {
-        const r = stopTimer();
-        if (r && r.entry) toast("Gestoppt – " + fmtHM(r.min) + " h gebucht");
-      } else {
-        startTimer({ vorhabenId, todoId });
-        toast("Timer läuft");
-      }
+      if (on) stopTimerUI();
+      else startTimerUI({ vorhabenId, todoId, dur });
     },
   }, icon(on ? "stop" : "play"), label ? h("span", null, on ? "Stopp" : label) : null);
+}
+
+export function estSelect(value, onchange, attrs) {
+  return h("select", { class: "est-sel", title: "Zeitangabe für das To-Do", "aria-label": "Zeitangabe", value: String(value || DEFAULT_EST),
+    onclick: (e) => e.stopPropagation(), onchange: (e) => onchange(parseInt(e.target.value, 10)), ...(attrs || {}) },
+    EST_OPTIONS.map((m) => h("option", { value: String(m) }, m + " Min")));
 }
 
 export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
@@ -90,7 +113,8 @@ export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
       ? h("input", { type: "date", class: "date-in small", value: t.due || "", "aria-label": "Fällig", onchange: (e) => patch("todos", t.id, { due: e.target.value }) })
       : t.due ? h("span", { class: "due " + dueClass(t.due, t.done) }, fmtShort(t.due)) : null,
     min >= 1 ? h("span", { class: "todo-min", title: "Erfasste Zeit" }, fmtHM(min)) : null,
-    !t.done && v ? timerButton({ todoId: t.id, vorhabenId: t.vorhabenId }) : null,
+    estSelect(t.est, (m) => patch("todos", t.id, { est: m })),
+    !t.done && v ? timerButton({ todoId: t.id, vorhabenId: t.vorhabenId, dur: (t.est || DEFAULT_EST) * 60 }) : null,
     editable ? h("button", { class: "icon-btn ghost", title: "To-Do löschen", "aria-label": "To-Do löschen", onclick: () => removeItem("todos", t.id) }, icon("trash")) : null);
 }
 

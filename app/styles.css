@@ -528,3 +528,52 @@ tr.is-done td { opacity: .62; }
   #toast { bottom: calc(var(--tabbar) + 20px); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ── To-Do-Zeitangabe, Countdown, Alarm ── */
+.est-sel {
+  appearance: none; -webkit-appearance: none; border: 1px solid var(--line); background: var(--soft); color: var(--ink);
+  border-radius: 99px; padding: 4px 10px; font-size: 12px; font-weight: 650; cursor: pointer; flex: none;
+}
+.est-sel:focus { outline: none; border-color: var(--accent); }
+.runbar { position: sticky; overflow: hidden; }
+.runbar.countdown { background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
+.run-progress { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--warn); transition: width 1s linear; }
+.focus-bar { max-width: 320px; margin: -4px auto 14px; }
+.alarm { text-align: center; }
+.alarm-icon { width: 64px; height: 64px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--warn) 15%, var(--card)); color: var(--warn); animation: ring 1s ease-in-out infinite; }
+.alarm-icon .ic { width: 32px; height: 32px; }
+@keyframes ring { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-14deg); } 40% { transform: rotate(12deg); } 60% { transform: rotate(-8deg); } 80% { transform: rotate(4deg); } }
+.alarm-what { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.today-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+
+/* ── Formular „Zeit nachtragen“ ── */
+.form-grid { display: flex; flex-direction: column; gap: 12px; }
+.form-grid .f { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.form-grid .f .sel, .form-grid .f .txt { width: 100%; }
+.f-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.tag { display: inline-block; font-size: 11px; font-weight: 650; color: var(--muted); background: var(--soft); border-radius: 5px; padding: 1px 6px; margin-left: 6px; }
+
+/* ── Wochenreview: Tage & Einträge ── */
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 170px; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; }
+.day-col { width: 100%; max-width: 44px; height: 120px; background: var(--soft); border-radius: 7px; display: flex; align-items: flex-end; overflow: hidden; }
+.day-col span { display: block; width: 100%; background: var(--accent); border-radius: 7px 7px 0 0; }
+.day-val { font-size: 11.5px; color: var(--muted); min-height: 15px; }
+.day-lbl { font-size: 12px; font-weight: 650; color: var(--muted); }
+.day.today .day-lbl { color: var(--accent); }
+.entry.wide { grid-template-columns: 92px 1fr auto auto; }
+
+/* ── Einstellungen: Leitfragen ── */
+.hint-edit { margin-bottom: 12px; }
+.hint-edit-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 13.5px; }
+.hint-edit-head .link-btn { margin-left: auto; }
+.hints-edit { font-size: 13.5px; line-height: 1.45; resize: vertical; }
+.settings textarea.txt { resize: vertical; }
+
+.doc-top .btn .ic { width: 16px; height: 16px; }
+@media (max-width: 760px) {
+  .hide-sm { display: none; }
+  .doc-top { gap: 6px; }
+  .today-add .sel { flex: 1 1 100%; }
+  .days { height: 150px; } .day-col { height: 100px; }
+}

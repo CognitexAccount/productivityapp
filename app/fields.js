@@ -3,34 +3,34 @@
 import { h } from "./ui.js";
 import { FIELD, FIELDS, TITLE_HINTS, ERFOLG_PARTS, OUTCOMES, ABSCHLUSS_CHECKS, RESISTANCE_TEXT } from "./model.js";
 import { patch, setField, setErfolg, setAbschluss, settings } from "./state.js";
-
-export const resistanceText = () => (settings().resistanceText || "").trim() || RESISTANCE_TEXT;
-const fieldLink = (f) => (f.key === "strategie" ? (settings().strategieLink || "").trim() : f.link) || null;
-import { editor, autoText, outlineHtml, onlyHeadings } from "./editor.js";
+import { editor, autoText } from "./editor.js";
 
 let wizardOpener = () => {};
 export const setWizardOpener = (fn) => { wizardOpener = fn; };
 
-export function outlineFields(existing) {
-  const f = { ...(existing || {}) };
-  FIELDS.filter((x) => x.outline).forEach((x) => { if (!f[x.key]) f[x.key] = outlineHtml(x.hints); });
-  return f;
-}
+export const resistanceText = () => (settings().resistanceText || "").trim() || RESISTANCE_TEXT;
 
-export function hintsBox(f, ed, html, onInsert) {
-  const hints = f.hints;
-  const link = f.key ? fieldLink(f) : f.link;
-  const canOutline = ed && onInsert && (!html || onlyHeadings(html)) && !(html && html.includes("<h4>"));
+// Leitfragen: eigene Fassung aus den Einstellungen, sonst Standard
+export const defaultHints = (key) => (key === "titel" ? TITLE_HINTS : (FIELD[key] || {}).hints || []);
+export function hintsFor(key) {
+  const own = (settings().hints || {})[key];
+  return Array.isArray(own) && own.length ? own : defaultHints(key);
+}
+export const HINT_FIELDS = [{ key: "titel", label: "Hypothese" }, ...FIELDS.map((f) => ({ key: f.key, label: f.label }))];
+
+export function hintsBox(key) {
+  const hints = hintsFor(key);
+  const link = key === "strategie" ? (settings().strategieLink || "").trim() : "";
+  if (!hints.length && !link) return null;
   return h("details", { class: "hints" },
     h("summary", null, "Leitfragen"),
     h("ul", null, hints.map((q) => h("li", null, q))),
-    link ? h("a", { href: link, target: "_blank", rel: "noopener", class: "hint-link" }, "Meine Ziele öffnen ↗") : null,
-    canOutline ? h("button", { type: "button", class: "btn small", onclick: () => onInsert() }, "Als Gliederung ins Feld einfügen") : null);
+    link ? h("a", { href: link, target: "_blank", rel: "noopener", class: "hint-link" }, "Meine Ziele öffnen ↗") : null);
 }
 
 export function titleEditor(v, { big } = {}) {
   return h("div", { class: "field" },
-    hintsBox({ hints: TITLE_HINTS }),
+    hintsBox("titel"),
     autoText({
       value: v.title, placeholder: "Hypothese – SMART formuliert …", cls: big ? "title-edit big" : "title-edit",
       onChange: (val) => patch("vorhaben", v.id, { title: val }, { silent: true }),
@@ -41,14 +41,12 @@ export function fieldEditor(v, key, { big = false } = {}) {
   if (key === "titel") return titleEditor(v, { big: true });
   if (key === "abschluss") return abschlussBlock(v);
   const f = FIELD[key];
-  if (f.special === "erfolg") return erfolgEditor(v, { big });
-  const html = (v.fields || {})[key] || "";
+  if (f.special === "erfolg") return h("div", { class: "field" }, hintsBox(key), erfolgEditor(v, { big }));
   const ed = editor({
-    html, placeholder: f.hints[0] || "", minHeight: big ? "46vh" : "110px",
+    html: (v.fields || {})[key] || "", placeholder: hintsFor(key)[0] || "", minHeight: big ? "46vh" : "110px",
     onChange: (val) => setField(v.id, key, val),
   });
-  const insert = () => { const o = outlineHtml(f.hints); ed.setValue(o); setField(v.id, key, o); ed.focusEnd(); };
-  return h("div", { class: "field" }, hintsBox(f, ed, html, insert), ed);
+  return h("div", { class: "field" }, hintsBox(key), ed);
 }
 
 const ERFOLG_PH = {

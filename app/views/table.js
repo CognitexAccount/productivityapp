@@ -5,7 +5,6 @@ import { FIELDS, ERFOLG_PARTS } from "../model.js";
 import { live, areas, patch, minutesOf, todosOf, createVorhaben } from "../state.js";
 import { ui, openPanel, openVorhaben, rerender, persistUi } from "../nav.js";
 import { statusSelect, deadlineBadge, preview, statusClass } from "../components.js";
-import { outlineFields } from "../fields.js";
 import { fmtH } from "../model.js";
 
 const COLS = ["naechste", "strategie", "ressourcen", "lernen", "versuch", "erfolg", "uebergabe", "ergebnis", "abschluss", "lessons"];
@@ -81,7 +80,7 @@ export function tableView() {
         h("div", { class: "area-head" },
           h("span", { class: "area-name" }, a.name),
           h("span", { class: "muted small" }, all.length + " Vorhaben"),
-          h("button", { class: "btn small", onclick: () => { const v = createVorhaben({ areaId: a.id, status: "Vorbereitung", fields: outlineFields() }); openVorhaben(v.id); } },
+          h("button", { class: "btn small", onclick: () => { const v = createVorhaben({ areaId: a.id, status: "Vorbereitung" }); openVorhaben(v.id); } },
             icon("plus"), "Vorhaben")))));
 
     const groups = [];

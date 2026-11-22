@@ -1,5 +1,6 @@
 {
-  "rewrites": [
-    { "source": "/tracker", "destination": "/tracker/index.html" }
+  "redirects": [
+    { "source": "/tracker", "destination": "/", "permanent": false },
+    { "source": "/tracker/(.*)", "destination": "/", "permanent": false }
   ]
 }

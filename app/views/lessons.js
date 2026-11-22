@@ -1,7 +1,7 @@
 // Lessons-Bibliothek: alle Lessons Learned (und Ergebnisse) durchsuchbar an einem Ort.
 
 import { h } from "../ui.js";
-import { fmtShort, STATUS_LABEL } from "../model.js";
+import { fmtShort } from "../model.js";
 import { live, areaName } from "../state.js";
 import { ui, openVorhaben } from "../nav.js";
 import { preview, statusPill } from "../components.js";
@@ -34,6 +34,5 @@ export function lessonsView() {
   draw();
   return h("div", { class: "view-lessons" },
     h("div", { class: "toolbar" }, search, h("span", { class: "muted small" }, items.length + " Vorhaben mit Learnings")),
-    h("p", { class: "muted small" }, "Beim Anlegen eines neuen Vorhabens zeigt dir das Tool automatisch passende frühere Learnings (" + (STATUS_LABEL.Idee) + " & Vorbereitung)."),
     results);
 }

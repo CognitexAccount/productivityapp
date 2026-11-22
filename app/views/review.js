@@ -2,8 +2,10 @@
 // Aktivität, Fristwächter und neue Ideen im Park.
 
 import { h, icon } from "../ui.js";
-import { todayKey, weekStartKey, addDays, fmtShort, fmtHM, fmtH, isoWeek, dateKey } from "../model.js";
-import { live, byId, isActive, minutesOf, minutesRange, deadline, lastActivity, sortTodos } from "../state.js";
+import { todayKey, weekStartKey, addDays, fmtShort, fmtDate, fmtHM, fmtH, isoWeek, dateKey } from "../model.js";
+import { live, byId, isActive, minutesOf, minutesRange, deadline, lastActivity, sortTodos, removeItem } from "../state.js";
+import { downloadCsv } from "../export.js";
+import { openTimeEntry } from "../timeentry.js";
 import { ui, rerender } from "../nav.js";
 import { todoRow, vorhabenLink, section, deadlineBadge } from "../components.js";
 
@@ -28,6 +30,13 @@ export function reviewView() {
   const ideas = vs.filter((v) => v.status === "Idee" && v.created >= fromMs && v.created <= toMs);
   const watch = vs.filter((v) => deadline(v));
 
+  // Zeit pro Tag (Mo–So) und alle Einträge der Woche – wie im alten Zeittracker
+  const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const days = WD.map((d, i) => { const k = addDays(from, i); return { d, k, min: minutesRange(k, k) }; });
+  const maxDay = Math.max(60, ...days.map((x) => x.min));
+  const entries = live("timeEntries").filter((e) => e.date >= from && e.date <= to && inArea(byId("vorhaben", e.vorhabenId) || { areaId: "" }) )
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.start || 0) - (a.start || 0));
+
   const card = (num, lbl, cls) => h("div", { class: "stat " + (cls || "") }, h("div", { class: "stat-num" }, num), h("div", { class: "stat-lbl" }, lbl));
 
   return h("div", { class: "view-review" },
@@ -35,7 +44,10 @@ export function reviewView() {
       h("button", { class: "btn ghost small", "aria-label": "Vorherige Woche", onclick: () => { ui.reviewOffset--; rerender(); } }, "‹"),
       h("strong", null, "KW " + isoWeek(from) + " · " + fmtShort(from) + " – " + fmtShort(to)),
       h("button", { class: "btn ghost small", "aria-label": "Nächste Woche", onclick: () => { ui.reviewOffset++; rerender(); } }, "›"),
-      ui.reviewOffset ? h("button", { class: "btn ghost small", onclick: () => { ui.reviewOffset = 0; rerender(); } }, "Diese Woche") : null),
+      ui.reviewOffset ? h("button", { class: "btn ghost small", onclick: () => { ui.reviewOffset = 0; rerender(); } }, "Diese Woche") : null,
+      h("div", { class: "spacer" }),
+      h("button", { class: "btn small", onclick: () => openTimeEntry() }, icon("clock"), "Zeit nachtragen"),
+      h("button", { class: "btn small", title: "Zeiteinträge dieser Woche als CSV (Excel)", onclick: () => downloadCsv(from, to) }, icon("file"), "CSV")),
     h("div", { class: "stats" },
       card(fmtHM(minutesRange(from, to)) + " h", "erfasste Zeit"),
       card(String(doneWeek.length), "To-Dos erledigt"),
@@ -50,6 +62,21 @@ export function reviewView() {
           h("div", { class: "bar-val num" }, fmtHM(x.min) + (x.target ? " / " + fmtHM(x.target) : "")))),
           h("div", { class: "muted small right" }, "Summe zugeordnet: " + fmtHM(total) + " h"))
       : h("p", { class: "muted small" }, "In dieser Woche wurde noch keine Zeit erfasst."), { ui }),
+    section("r-days", "Zeit pro Tag", h("div", { class: "days" }, days.map((x) => h("div", { class: "day" + (x.k === tk ? " today" : "") },
+        h("div", { class: "day-val num" }, x.min >= 1 ? fmtHM(x.min) : ""),
+        h("div", { class: "day-col" }, h("span", { style: { height: Math.max(x.min ? 4 : 0, (x.min / maxDay) * 100) + "%" } })),
+        h("div", { class: "day-lbl" }, x.d)))), { ui }),
+    section("r-entries", "Zeiteinträge dieser Woche", entries.length
+      ? h("div", { class: "entries" }, entries.map((e) => {
+          const v = byId("vorhaben", e.vorhabenId), t = e.todoId ? byId("todos", e.todoId) : null;
+          return h("div", { class: "entry wide" },
+            h("span", { class: "muted" }, fmtDate(e.date)),
+            h("span", { class: "entry-what" }, v ? vorhabenLink(v) : "(gelöscht)", t || e.note ? h("span", { class: "muted small" }, " · " + (t ? t.title : e.note)) : null,
+              e.manual ? h("span", { class: "tag" }, "nachgetragen") : null),
+            h("span", { class: "num" }, fmtHM(e.min)),
+            h("button", { class: "icon-btn ghost tiny", title: "Eintrag löschen", "aria-label": "Eintrag löschen", onclick: () => removeItem("timeEntries", e.id) }, icon("trash")));
+        }))
+      : h("p", { class: "muted small" }, "Keine Einträge in dieser Woche."), { ui, count: entries.length || null }),
     section("r-watch", "Fristwächter", watch.length
       ? watch.map((v) => h("div", { class: "line-item" }, vorhabenLink(v), deadlineBadge(v), h("span", { class: "muted small" }, "bis " + fmtShort(v.end))))
       : h("p", { class: "muted small" }, "Alle Laufzeiten im Plan."), { ui, count: watch.length || null }),

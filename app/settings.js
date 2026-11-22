@@ -3,8 +3,10 @@
 import { h, icon, modal, toast, confirmDialog } from "./ui.js";
 import { todayKey, fmtH } from "./model.js";
 import { store, live, areas, settings, setSingleton, upsert, patch, removeItem, uid, importState, setPin, notify } from "./state.js";
+import { HINT_FIELDS, hintsFor, defaultHints } from "./fields.js";
+import { downloadCsv } from "./export.js";
 
-/* ── Daten aus dem bisherigen Zeittracker (/tracker) ── */
+/* ── Daten aus dem alten Zeittracker (über /api/data weiterhin lesbar) ── */
 async function trackerData() {
   const byId = (arr) => Object.fromEntries((arr || []).map((x) => [x.id, x]));
   let local = { projects: [], entries: [] };
@@ -41,7 +43,8 @@ export async function openTrackerImport() {
   }
   const rows = data.projects.map((p) => {
     const entries = data.entries.filter((e) => e.projectId === p.id);
-    const sel = h("select", { class: "sel small", value: guess(p.name, vs), "aria-label": "Vorhaben für " + p.name },
+    const done = entries.length ? live("timeEntries").find((e) => e.id === "trk_" + entries[0].id) : null;
+    const sel = h("select", { class: "sel small", value: done ? done.vorhabenId : guess(p.name, vs), "aria-label": "Vorhaben für " + p.name },
       h("option", { value: "" }, "– nicht übernehmen –"),
       vs.map((v) => h("option", { value: v.id }, (v.title || "Ohne Titel").slice(0, 80))));
     return { p, entries, sel };
@@ -97,6 +100,27 @@ export function openSettings() {
         h("label", { class: "lbl" }, "Link zu deinen Zielen (z. B. Google-Drive-Ordner)"),
         h("input", { class: "txt", type: "url", value: s.strategieLink || "", placeholder: "https://…",
           onchange: (e) => setSingleton("settings", { ...settings(), strategieLink: e.target.value.trim() }) })),
+      h("section", null, h("h4", null, "Leitfragen"),
+        h("p", { class: "muted small" }, "Eine Frage pro Zeile. Die Leitfragen erscheinen bei jedem Vorhaben ausklappbar über dem Feld."),
+        HINT_FIELDS.map((f) => {
+          const own = Array.isArray((s.hints || {})[f.key]) && s.hints[f.key].length;
+          const ta = h("textarea", { class: "txt hints-edit", rows: Math.max(2, hintsFor(f.key).length + 1), value: hintsFor(f.key).join("\n"), "aria-label": "Leitfragen " + f.label });
+          ta.addEventListener("change", () => {
+            const lines = ta.value.split("\n").map((x) => x.trim()).filter(Boolean);
+            const hints = { ...(settings().hints || {}) };
+            if (!lines.length || JSON.stringify(lines) === JSON.stringify(defaultHints(f.key))) delete hints[f.key];
+            else hints[f.key] = lines;
+            setSingleton("settings", { ...settings(), hints });
+            draw();
+          });
+          return h("div", { class: "hint-edit" },
+            h("div", { class: "hint-edit-head" }, h("strong", null, f.label), own ? h("span", { class: "tag" }, "angepasst") : null,
+              own ? h("button", { class: "link-btn small", onclick: () => {
+                const hints = { ...(settings().hints || {}) }; delete hints[f.key];
+                setSingleton("settings", { ...settings(), hints }); draw();
+              } }, "Standard wiederherstellen") : null),
+            ta);
+        })),
       h("section", null, h("h4", null, "Bereiche"),
         areas().map((a) => {
           const n = live("vorhaben").filter((v) => v.areaId === a.id).length;
@@ -107,9 +131,11 @@ export function openSettings() {
               onclick: async () => { if (await confirmDialog("Bereich „" + a.name + "“ löschen?", { ok: "Löschen", danger: true })) { removeItem("areas", a.id); draw(); } } }, icon("trash")));
         }),
         h("div", { class: "area-edit" }, newArea, h("button", { class: "btn small", onclick: addArea }, icon("plus"), "Hinzufügen"))),
-      h("section", null, h("h4", null, "Zeittracker"),
-        h("p", { class: "muted small" }, "Der bisherige Zeittracker läuft weiter unter ", h("a", { href: "/tracker" }, "/tracker"), ". Seine Einträge kannst du hier einem Vorhaben zuordnen und übernehmen."),
-        h("button", { class: "btn", onclick: () => { close(); openTrackerImport(); } }, "Zeittracker-Daten übernehmen …")),
+      h("section", null, h("h4", null, "Zeiten"),
+        h("div", { class: "row-wrap" },
+          h("button", { class: "btn", onclick: () => downloadCsv() }, "Alle Zeiten als CSV (Excel)"),
+          h("button", { class: "btn", onclick: () => { close(); openTrackerImport(); } }, "Daten aus altem Zeittracker zuordnen …")),
+        h("p", { class: "muted small" }, "Der alte Zeittracker ist abgeschaltet; seine Einträge sind übernommen. Über „zuordnen“ kannst du sie einem anderen Vorhaben zuweisen – die Einträge werden dabei verschoben, nicht verdoppelt.")),
       h("section", null, h("h4", null, "Backup"),
         h("div", { class: "row-wrap" },
           h("button", { class: "btn", onclick: () => {

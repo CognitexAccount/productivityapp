@@ -1,32 +1,13 @@
 // Dokument-Ansicht: ein Vorhaben als Seite mit allen Kapiteln (einklappbar).
 
 import { h, icon, toast, confirmDialog } from "../ui.js";
-import { FIELDS, todayKey, weekStartKey, addDays, fmtDate, fmtHM, fmtH, diffDays } from "../model.js";
-import {
-  byId, live, areas, patch, removeItem, todosOf, minutesOf, addTodo, addEntry, sortTodos,
-} from "../state.js";
+import { FIELDS, DEFAULT_EST, todayKey, weekStartKey, addDays, fmtDate, fmtHM, fmtH, diffDays } from "../model.js";
+import { byId, live, areas, patch, removeItem, todosOf, minutesOf, addTodo, addEntry, sortTodos } from "../state.js";
 import { ui, go, rerender } from "../nav.js";
-import { statusSelect, deadlineBadge, todoRow, timerButton, section, preview, changeStatus } from "../components.js";
+import { statusSelect, deadlineBadge, todoRow, timerButton, section, changeStatus, estSelect } from "../components.js";
 import { fieldEditor, titleEditor, abschlussBlock } from "../fields.js";
-import { sanitize } from "../editor.js";
-
-const STOP = new Set(("aber alle allem auch beim bereits bevor damit dann dass dazu denn diese dieser dieses durch eine einem einen einer eines etwas habe haben hier immer jetzt kann kein keine machen mehr meine meinen meiner meines mich mind möchte nach nicht noch oder ohne schon sehr sich sind soll sowie über unter viel weil weiter wenn werden wieder wird zwischen schaffe bis zum zur").split(" "));
-function tokens(s) {
-  return Array.from(new Set(String(s || "").toLowerCase().replace(/[^a-zäöüß0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 5 && !STOP.has(w))));
-}
-function relatedLessons(v) {
-  const words = tokens(v.title + " " + preview((v.fields || {}).lernen));
-  if (!words.length) return [];
-  return live("vorhaben")
-    .filter((o) => o.id !== v.id && preview((o.fields || {}).lessons))
-    .map((o) => {
-      const text = (o.title + " " + preview(o.fields.lessons) + " " + preview(o.fields.ergebnis)).toLowerCase();
-      return { o, score: words.filter((w) => text.includes(w)).length };
-    })
-    .filter((x) => x.score >= 1)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-}
+import { downloadPdf, sendToDrive, preloadDrive } from "../export.js";
+import { openTimeEntry } from "../timeentry.js";
 
 function parseDur(s) {
   s = String(s || "").trim().replace(",", ".");
@@ -40,10 +21,12 @@ function todosBlock(v) {
   const list = todosOf(v.id);
   const open = list.filter((t) => !t.done), done = list.filter((t) => t.done);
   const inp = h("input", { class: "todo-new", placeholder: "Neues To-Do … (Enter)", "data-live-edit": "1", "data-focus-key": "todo-new-" + v.id, "aria-label": "Neues To-Do" });
+  let est = ui.lastEst || DEFAULT_EST;
+  const estSel = estSelect(est, (m) => { est = m; ui.lastEst = m; });
   const due = h("input", { type: "date", class: "date-in small", "aria-label": "Fällig am" });
   const add = () => {
     if (!inp.value.trim()) return;
-    addTodo(v.id, inp.value, due.value);
+    addTodo(v.id, inp.value, due.value, est);
     ui.focusAfter = "todo-new-" + v.id;
     inp.value = "";
     inp.blur();
@@ -52,7 +35,7 @@ function todosBlock(v) {
   const doneOpen = !!ui.collapsed["done-" + v.id];
   return h("div", { class: "todos" },
     open.map((t) => todoRow(t, { editable: true })),
-    h("div", { class: "todo-add" }, inp, due, h("button", { class: "btn small", onclick: add }, icon("plus"), "Hinzufügen")),
+    h("div", { class: "todo-add" }, inp, estSel, due, h("button", { class: "btn small", onclick: add }, icon("plus"), "Hinzufügen")),
     done.length ? h("div", null,
       h("button", { class: "link-btn small", onclick: () => { ui.collapsed["done-" + v.id] = !doneOpen; rerender(); } },
         (doneOpen ? "Erledigte ausblenden" : "Erledigte anzeigen") + " (" + done.length + ")"),
@@ -95,7 +78,7 @@ function timeBlock(v) {
         const t = e.todoId ? byId("todos", e.todoId) : null;
         return h("div", { class: "entry" },
           h("span", { class: "muted" }, fmtDate(e.date)),
-          h("span", { class: "entry-what" }, t ? t.title : e.note || (e.source === "tracker" ? "aus Zeittracker" : "am Vorhaben")),
+          h("span", { class: "entry-what" }, t ? t.title : e.note || (e.source === "tracker" ? "aus altem Zeittracker" : "am Vorhaben")),
           h("span", { class: "num" }, fmtHM(e.min)),
           h("button", { class: "icon-btn ghost tiny", title: "Eintrag löschen", "aria-label": "Eintrag löschen", onclick: () => removeItem("timeEntries", e.id) }, icon("trash")));
       }),
@@ -104,29 +87,23 @@ function timeBlock(v) {
     h("div", { class: "manual" }, h("span", { class: "muted small" }, "Nachtragen:"), dIn, mIn, tSel, h("button", { class: "btn small", onclick: addManual }, "Eintragen")));
 }
 
-function goalsBlock(v) {
-  const goals = live("goals");
-  if (!goals.length) return h("p", { class: "muted small" }, "Noch keine Ziele angelegt – unter ", h("a", { href: "#/strategie" }, "Strategie"), " kannst du 1-Jahres-Ziele und deine 10-Jahres-Vision anlegen und hier verknüpfen.");
-  const ids = v.goalIds || [];
-  return h("div", { class: "goal-chips" },
-    goals.map((g) => {
-      const on = ids.includes(g.id);
-      return h("button", { class: "chip goal" + (on ? " on" : ""), title: on ? "Verknüpfung lösen" : "Mit Ziel verknüpfen",
-        onclick: () => patch("vorhaben", v.id, { goalIds: on ? ids.filter((x) => x !== g.id) : [...ids, g.id] }) },
-        h("span", { class: "goal-type" }, g.type === "10j" ? "10 J" : "1 J"), g.text || "Ziel");
-    }));
+async function runExport(btn, fn) {
+  btn.disabled = true;
+  try { await fn(); }
+  catch (e) { toast(String((e && e.message) || e)); }
+  finally { btn.disabled = false; }
 }
 
 export function docView(vid) {
   const v = byId("vorhaben", vid);
   if (!v) return h("div", { class: "empty-state" }, "Dieses Vorhaben gibt es nicht (mehr). ", h("a", { href: "#/board" }, "Zum Board"));
+  preloadDrive();
 
   const areaSel = h("select", { class: "sel small", value: v.areaId, "aria-label": "Bereich", onchange: (e) => patch("vorhaben", v.id, { areaId: e.target.value }) },
     areas().map((a) => h("option", { value: a.id }, a.name)));
   const gruppe = h("input", { class: "txt small", value: v.gruppe || "", placeholder: "Gruppe (z. B. Cognitex)", "aria-label": "Gruppe",
     onchange: (e) => patch("vorhaben", v.id, { gruppe: e.target.value.trim() }) });
   const dur = v.start && v.end ? diffDays(v.start, v.end) : null;
-  const related = ["Idee", "Vorbereitung"].includes(v.status) ? relatedLessons(v) : [];
 
   const sections = [];
   FIELDS.forEach((f) => {
@@ -136,15 +113,21 @@ export function docView(vid) {
       sections.push(section("todos", "To-Dos", todosBlock(v), { ui, count: open || null }));
       sections.push(section("zeit", "Zeit", timeBlock(v), { ui }));
     }
-    if (f.key === "strategie") sections.push(section("goals", "Verknüpfte Ziele", goalsBlock(v), { ui }));
     if (f.key === "ergebnis") sections.push(section("abschluss", "Sauberer Abschluss", abschlussBlock(v), { ui }));
   });
 
+  const pdfBtn = h("button", { class: "btn small", title: "Vorhaben als PDF herunterladen" }, icon("file"), h("span", { class: "hide-sm" }, "PDF"));
+  pdfBtn.addEventListener("click", () => runExport(pdfBtn, () => downloadPdf(v.id)));
+  const driveBtn = h("button", { class: "btn small", title: "Als PDF an Google Drive senden" }, icon("drive"), h("span", { class: "hide-sm" }, "An Drive senden"));
+  driveBtn.addEventListener("click", () => runExport(driveBtn, () => sendToDrive(v.id)));
+
   return h("div", { class: "view-doc" },
     h("div", { class: "doc-top" },
-      h("button", { class: "btn ghost", onclick: () => (history.length > 1 ? history.back() : go("#/board")) }, icon("back"), "Zurück"),
+      h("button", { class: "btn ghost", onclick: () => (history.length > 1 ? history.back() : go("#/board")) }, icon("back"), h("span", { class: "hide-sm" }, "Zurück")),
       h("div", { class: "spacer" }),
-      timerButton({ vorhabenId: v.id, label: "Am Vorhaben arbeiten" })),
+      pdfBtn, driveBtn,
+      h("button", { class: "btn small", title: "Zeit nachtragen", onclick: () => openTimeEntry(v.id) }, icon("clock"), h("span", { class: "hide-sm" }, "Zeit nachtragen")),
+      timerButton({ vorhabenId: v.id, label: "Stoppuhr" })),
     h("div", { class: "doc-head card-like" },
       h("div", { class: "doc-meta" }, areaSel, gruppe, statusSelect(v), deadlineBadge(v)),
       titleEditor(v, { big: true }),
@@ -153,11 +136,6 @@ export function docView(vid) {
         h("label", { class: "inline-field" }, "bis", h("input", { type: "date", class: "date-in", value: v.end || "", onchange: (e) => patch("vorhaben", v.id, { end: e.target.value }) })),
         dur != null ? h("span", { class: "muted small" }, dur + " Tage") : null,
         v.status === "Idee" ? h("button", { class: "btn primary small", onclick: () => changeStatus(v.id, "Vorbereitung") }, "Zum Vorhaben befördern →") : null)),
-    related.length ? h("div", { class: "related card-like" },
-      h("div", { class: "related-title" }, "💡 Passende Learnings aus früheren Vorhaben"),
-      related.map(({ o }) => h("details", { class: "related-item" },
-        h("summary", null, o.title),
-        h("div", { class: "rich", html: sanitize(o.fields.lessons) })))) : null,
     h("div", { class: "doc-sections" }, sections),
     h("div", { class: "doc-danger" },
       h("button", { class: "btn ghost danger-txt", onclick: async () => {

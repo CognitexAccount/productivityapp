@@ -60,3 +60,25 @@ zufälliger Ablage-Schlüssel, kein Passwort.)
 - Die Website lädt beim Start von `/api/data`, speichert Änderungen dorthin
   (entprellt) und pollt ~alle 5 s auf Änderungen anderer Geräte; lokale Kopie
   als Offline-Puffer. Mehrere Geräte: „last write wins".
+
+
+## Optional: „An Google Drive senden“ mit einem Klick
+
+Ohne Einrichtung öffnet der Button das Teilen-Menü des Geräts (am Handy lässt
+sich dort **Google Drive** wählen); am Desktop wird das PDF heruntergeladen.
+Für direktes Hochladen per Klick (auch am Desktop):
+
+1. <https://console.cloud.google.com/> → Projekt anlegen (oder vorhandenes wählen).
+2. **APIs & Dienste → Bibliothek** → „Google Drive API“ aktivieren.
+3. **OAuth-Zustimmungsbildschirm** einrichten (Typ „Extern“, App-Name z. B.
+   „Projektsystem“, deine E-Mail als Testnutzer eintragen).
+4. **Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID** → Typ
+   „Webanwendung“, unter **Autorisierte JavaScript-Quellen** eintragen:
+   `https://productivityapp-alpha.vercel.app`
+5. Die angezeigte **Client-ID** (endet auf `.apps.googleusercontent.com`) in
+   Vercel unter Settings → Environment Variables als `GOOGLE_CLIENT_ID` speichern
+   und neu deployen.
+
+Beim ersten Senden fragt Google einmal nach der Erlaubnis. Die App bekommt nur
+Zugriff auf Dateien, die sie selbst anlegt (Scope `drive.file`) – nicht auf den
+Rest deines Drives. Die PDFs landen im Ordner **„Projektsystem“**.

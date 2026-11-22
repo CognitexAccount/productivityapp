@@ -1,10 +1,11 @@
 // Heute / Fokus (mobil zuerst): fällige To-Dos mit großem Start-Button für den Timer.
 
 import { h, icon } from "../ui.js";
-import { todayKey, addDays, fmtHM, fmtDate, fmtClock } from "../model.js";
+import { todayKey, addDays, fmtHM, fmtDate, fmtClock, DEFAULT_EST } from "../model.js";
 import { store, live, byId, isActive, sortTodos, addTodo, minutesRange } from "../state.js";
 import { ui, rerender } from "../nav.js";
-import { todoRow, timerButton, section } from "../components.js";
+import { todoRow, timerButton, section, estSelect } from "../components.js";
+import { openTimeEntry } from "../timeentry.js";
 
 const inArea = (v) => v && (ui.area === "all" || v.areaId === ui.area);
 
@@ -25,10 +26,12 @@ export function todayView() {
   const sel = h("select", { class: "sel small", "aria-label": "Vorhaben", value: ui.lastVorhaben && vs.some((v) => v.id === ui.lastVorhaben) ? ui.lastVorhaben : (vs[0] || {}).id },
     vs.map((v) => h("option", { value: v.id }, (v.title || "Ohne Titel").slice(0, 70))));
   const due = h("input", { type: "date", class: "date-in small", value: tk, "aria-label": "Fällig am" });
+  let est = ui.lastEst || DEFAULT_EST;
+  const estSel = estSelect(est, (m) => { est = m; ui.lastEst = m; });
   const add = () => {
     if (!inp.value.trim() || !sel.value) return;
     ui.lastVorhaben = sel.value;
-    addTodo(sel.value, inp.value, due.value);
+    addTodo(sel.value, inp.value, due.value, est);
     ui.focusAfter = "today-new";
     inp.value = "";
     inp.blur();
@@ -45,14 +48,17 @@ export function todayView() {
     h("div", { class: "today-head" },
       h("div", null,
         h("div", { class: "today-date" }, new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })),
-        h("div", { class: "muted small" }, "Heute erfasst: " + fmtHM(minutesRange(tk, tk)) + " h · " + doneToday.length + " erledigt"))),
+        h("div", { class: "muted small" }, "Heute erfasst: " + fmtHM(minutesRange(tk, tk)) + " h · " + doneToday.length + " erledigt")),
+      h("button", { class: "btn small", onclick: () => openTimeEntry() }, icon("clock"), "Zeit nachtragen")),
     runV ? h("div", { class: "focus-card" },
       h("div", { class: "focus-lbl" }, "Du arbeitest gerade an"),
       h("div", { class: "focus-what" }, runT ? runT.title : "dem Vorhaben"),
       h("a", { class: "focus-v", href: "#/v/" + runV.id }, runV.title),
-      h("div", { class: "focus-time", id: "focusTime" }, fmtClock((Date.now() - r.start) / 1000)),
+      h("div", { class: "focus-lbl" }, r.dur ? "Countdown – noch" : "Stoppuhr läuft seit"),
+      h("div", { class: "focus-time", id: "focusTime" }, r.dur ? fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000)),
+      r.dur ? h("div", { class: "bar focus-bar" }, h("span", { class: "bar-fill", id: "focusBar", style: { width: Math.min(100, ((Date.now() - r.start) / (r.dur * 1000)) * 100) + "%" } })) : null,
       timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, big: true, label: "Stopp" })) : null,
-    h("div", { class: "todo-add today-add card-like" }, inp, sel, due, h("button", { class: "btn primary small", onclick: add }, icon("plus"), "Hinzufügen")),
+    h("div", { class: "todo-add today-add card-like" }, inp, sel, estSel, due, h("button", { class: "btn primary small", onclick: add }, icon("plus"), "Hinzufügen")),
     overdue.length ? section("t-over", "Überfällig", list(overdue), { ui, count: overdue.length }) : null,
     section("t-today", "Heute fällig", list(today), { ui, count: today.length || null }),
     section("t-week", "Nächste 7 Tage", list(week), { ui, count: week.length || null }),

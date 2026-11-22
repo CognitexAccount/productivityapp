@@ -1,8 +1,7 @@
 // Sagt, welcher Speicher am Vercel-Projekt hängt und ob die Tabelle steht —
 // ohne Zugangsdaten preiszugeben. Zum Nachsehen: https://<domain>/api/status
 
-const { zugang } = require("./data.js");
-const TABELLE = "fortschritt";
+const { zugang, TABELLE } = require("../lib/store.js");
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");

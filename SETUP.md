@@ -1,5 +1,15 @@
 # Cloud-Sync auf Vercel (ohne Login)
 
+> Gilt für beide Teile: das **Projektsystem** (`/api/system`) und den
+> **Zeittracker** (`/api/data`). Beide nutzen dieselbe Datenbank und dieselbe
+> Tabelle `fortschritt` – jeweils eine eigene Zeile. Ist der Zeittracker schon
+> synchron, ist es das Projektsystem automatisch auch.
+>
+> **Optionaler PIN:** Setze in Vercel → Settings → Environment Variables
+> `PROJEKTSYSTEM_PIN` (z. B. eine 6-stellige Zahl) und deploye neu. Das
+> Projektsystem fragt dann einmal pro Gerät nach diesem PIN. Ohne die Variable
+> ist es – wie der Zeittracker – für jeden mit der Adresse erreichbar.
+
 Die Website synchronisiert ihre Daten (Projekte + Zeiten) geräteübergreifend
 **ohne Login** – über denselben Mechanismus wie der Psychologie-Aufnahmetest:
 eine kleine Serverless-Funktion (`api/data.js`), die den am Vercel-Projekt

@@ -1,56 +1,72 @@
-# Projekt-Zeittracker
+# Projektsystem (mit Zeittracker)
 
-Eine schlanke, eigenständige Web-App zum Erfassen von Arbeitszeit pro Projekt — eine einzige `index.html`, ohne Build-Schritt und ohne Server. Einfach im Browser öffnen.
+Persönliches Betriebs- und Projektsystem: Vorhaben planen, To-Dos fokussiert
+abarbeiten, Zeit erfassen – am Desktop wie am Handy. Ohne Build-Schritt, ohne
+Login, gehostet auf Vercel, Daten in Supabase.
 
-## Funktionen
+| Pfad | Inhalt |
+|---|---|
+| `/` | **Projektsystem** (Startseite) |
+| `/tracker` | bisheriger Zeittracker (läuft unverändert weiter) |
+| `/api/system` | Cloud-Speicher des Projektsystems |
+| `/api/data` | Cloud-Speicher des Zeittrackers |
+| `/api/status` | zeigt, welche Datenbank erkannt wurde und ob die Tabelle steht |
 
-- **Projekte** anlegen (mit optionalem Wochenziel in Stunden)
-- **Stoppuhr** pro Projekt (Start/Stopp) — erfasst die laufende Zeit live
-- **Countdown-Timer**: Projekt auswählen, Zeit einstellen (Minuten/Sekunden oder Schnellwahl), bis 0 herunterzählen — **Signalton bei 0**
-  - Läuft auch nach einem Neuladen der Seite weiter (Ablaufzeit wird gespeichert)
-  - Optional: die abgelaufene Fokuszeit wird dem gewählten Projekt automatisch gutgeschrieben
-- **Zeit manuell nachtragen**
-- **Heute-** und **Wochenansicht** mit Tagesbalken und Soll/Ist gegen das Wochenziel
-- **Export**: CSV (für deutsches Excel) und JSON-Backup, plus Backup-Import
+## Datenmodell
 
-## Hosting-Varianten & Cloud-Sync
+1. **Bereiche** (Business, Akademische Projekte, Lifestyle/Sonstiges, Künstler …)
+2. **Vorhaben** (Hypothesen) mit Lebenszyklus: Idee → Vorbereitung → Läuft →
+   Abschluss-Review → Abgeschlossen. Optional einer **Gruppe** zugeordnet (z. B. „Cognitex“).
+3. **To-Dos** an einem Vorhaben, mit Fälligkeit.
+4. **Zeiteinträge** an To-Do und Vorhaben (Timer oder nachgetragen).
+5. **Ziele**: 1-Jahres-Ziele und 10-Jahres-Vision, mit Vorhaben verknüpfbar.
 
-Die App erkennt automatisch, wo sie läuft, und wählt den passenden Speicher:
+Alle Textfelder sind Rich Text (Aufzählungen, Checklisten, Überschriften, Links).
+Jedes Feld zeigt seine **Leitfragen** als ausklappbaren Hinweis; beim Befördern
+einer Idee werden sie als Gliederung vorbefüllt. Erfolg / Neutral / Misserfolg /
+**Killkriterium** sind vier eigene Felder – ein fehlendes Killkriterium wird markiert.
 
-| Umgebung | Daten-Sync über Geräte | Voraussetzung |
-|---|---|---|
-| **claude.ai-Artefakt** | ✅ automatisch | in claude.ai angemeldet (kein extra Login) |
-| **Vercel / eigener Webserver** | ✅ via `api/data` (Supabase *oder* Redis) | Datenbank am Projekt verbinden → **siehe `SETUP.md`** |
-| **Lokale `index.html` (`file://`)** | — nur lokal | — |
+## Ansichten
 
-Oben in der App zeigt eine Statuszeile den aktiven Modus (🟢 Cloud-Sync /
-⚪ nur lokal).
+- **Heute** (mobil zuerst): überfällige, heutige und kommende To-Dos mit großem Start-Button
+- **Tabelle**: wie das Sheet, Zellen gekürzt – Klick öffnet die Zelle groß im Seitenpanel
+- **Board**: Kanban nach Status, Drag & Drop, **WIP-Grenze** für „Läuft“, Ideen-Park
+- **Dokument**: ein Vorhaben als Seite mit allen Kapiteln, To-Dos, Zeit, Zielen
+- **Zeitleiste**: Laufzeiten als Balken, „heute parallel aktiv“, überzogene Laufzeiten
+- **Wochenreview**: Zeit pro Vorhaben (Soll/Ist über das Wochenziel), überfällige To-Dos,
+  Vorhaben ohne Aktivität, Fristwächter, neue Ideen
+- **Lessons**: alle Lessons Learned durchsuchbar; neue Vorhaben bekommen passende frühere Learnings vorgeschlagen
+- **Strategie**: Ziele pflegen, sehen, welche Vorhaben darauf einzahlen
 
-> **Vercel-Sync ohne Login:** Es gibt keine Zugriffskontrolle – wer die URL
-> kennt, teilt denselben Datenstand. URL privat halten. Details und
-> Einrichtung in **`SETUP.md`**.
+Dazu: **Idee parken** (überall, Taste `i`), **Fristwächter** (Banner bei überschrittener
+Laufzeit), **Abschluss-Assistent** (Ergebnis → Resistance oder Personal End Point →
+Stakeholder-Checkliste → Lessons Learned → Feiern), **Zeittracker-Import**, JSON-Backup.
+Am Handy über „Zum Home-Bildschirm“ als App installierbar.
 
-## Datenspeicherung
+## Speicherung & Sync
 
-- **Cloud-Sync (ohne Login):** Als Artefakt auf claude.ai werden Projekte und
-  erfasste Zeiten in der **Cloud-Datenbank des Artefakts** gespeichert und
-  zwischen deinen Geräten synchronisiert. Es ist kein separater Login nötig —
-  genutzt wird, dass du in claude.ai angemeldet bist; das Artefakt ist privat.
-  Vorhandene lokale Daten werden beim ersten Start automatisch in die Cloud
-  übernommen.
-- **Lokale Kopie / Offline:** Zusätzlich liegt eine Kopie im Browser
-  (`localStorage`). Ohne Cloud-Zugang (z. B. als reine `index.html` lokal
-  geöffnet) arbeitet die App rein lokal weiter.
-- **Backup/Export:** CSV (deutsches Excel) und JSON-Backup mit Import.
+- Die App liest/schreibt über `/api/system` in die am Vercel-Projekt verbundene
+  Datenbank (Supabase oder Redis, siehe `SETUP.md`), Tabelle `fortschritt`,
+  Zeile `app = "projektsystem"`.
+- **Mehrere Geräte**: Jede Änderung trägt einen Zeitstempel *pro Feld*. Server und
+  Browser führen Stände feldweise zusammen (`shared/sync.js`) – parallele Änderungen
+  an verschiedenen Feldern (z. B. Status am Laptop, Text offline am Handy) gehen
+  nicht verloren. Andere Geräte gleichen alle ~8 s ab.
+- Lokale Kopie im Browser als Offline-Puffer.
+- **Kein Login.** Optionaler Schutz über die Environment-Variable
+  `PROJEKTSYSTEM_PIN` (siehe `SETUP.md`).
 
-Der aktuelle Cloud-Status wird oben in der App angezeigt (grün = Cloud-Sync
-aktiv, grau = nur lokal).
+## Aufbau
 
-> Hinweis: Der *gerade laufende* Timer/Countdown-Zustand bleibt an das Gerät
-> gebunden, auf dem gestartet wurde — die **Ergebnisse (Einträge)** werden in
-> die Cloud synchronisiert.
-
-## Nutzung
-
-`index.html` im Browser öffnen — fertig. Die Datei kann auch z. B. über GitHub
-Pages gehostet werden.
+```
+index.html            Projektsystem (lädt app/main.js als ES-Modul)
+app/                  Frontend: state.js (Daten & Sync), views/*, editor.js, …
+shared/sync.js        Zusammenführen von Ständen (Browser + Server)
+shared/text.js        Text ↔ Rich Text
+api/system.js         Speicher Projektsystem
+api/data.js           Speicher Zeittracker
+api/status.js         Diagnose
+lib/store.js          gemeinsame Speicherlogik (Supabase / Redis)
+tracker/index.html    bisheriger Zeittracker
+tools/supabase.sql    Tabelle anlegen (falls noch nicht vorhanden)
+```

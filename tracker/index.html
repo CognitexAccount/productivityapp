@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projekt-Zeittracker</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1a1f29; --muted:#6b7482;
+    --line:#e6e9ee; --accent:#2f6fde; --accent-ink:#ffffff;
+    --good:#1f9d57; --warn:#e07b1a; --danger:#d14343; --soft:#eef1f6;
+    --radius:14px; --shadow:0 1px 2px rgba(20,30,50,.06),0 6px 20px rgba(20,30,50,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1319; --card:#161b23; --ink:#e8ecf2; --muted:#9aa4b2;
+      --line:#262d38; --accent:#4b86ec; --accent-ink:#0b0e13;
+      --good:#39c072; --warn:#e8933a; --danger:#e36a6a; --soft:#1b212b;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:22px 16px 60px}
+  h1{font-size:20px;margin:0;font-weight:650;letter-spacing:-.01em}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    margin:0 0 10px;font-weight:650}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+  .row{display:flex;align-items:center;gap:10px}
+  .spacer{flex:1}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);border-radius:10px;padding:7px 12px;transition:.12s;font-weight:550}
+  button:hover{border-color:var(--muted)}
+  button:active{transform:translateY(1px)}
+  .btn-primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+  .btn-primary:hover{filter:brightness(1.05)}
+  .btn-ghost{background:transparent;border-color:transparent;color:var(--muted);padding:6px 8px}
+  .btn-ghost:hover{color:var(--ink);background:var(--soft)}
+  .btn-danger{color:var(--danger);border-color:transparent;background:transparent}
+  .btn-danger:hover{background:rgba(209,67,67,.1)}
+  .btn-sm{padding:5px 9px;font-size:13px;border-radius:8px}
+  input,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);
+    border-radius:9px;padding:8px 10px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  input[type=number]{width:72px}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .proj{display:flex;align-items:center;gap:11px;padding:11px 4px;border-top:1px solid var(--line)}
+  .proj:first-child{border-top:none}
+  .proj .name{font-weight:600}
+  .proj .meta{color:var(--muted);font-size:12.5px}
+  .pill{font-variant-numeric:tabular-nums;font-weight:600;font-size:13.5px}
+  .mono{font-variant-numeric:tabular-nums}
+  .active-bar{display:flex;align-items:center;gap:14px;background:linear-gradient(0deg,var(--soft),var(--card));
+    border:1px solid var(--line);border-left:4px solid var(--accent)}
+  .active-time{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .bar{height:8px;border-radius:6px;background:var(--soft);overflow:hidden}
+  .bar>span{display:block;height:100%;border-radius:6px}
+  .barrow{display:grid;grid-template-columns:130px 1fr auto;gap:12px;align-items:center;margin:9px 0}
+  .barrow .lab{display:flex;align-items:center;gap:8px;min-width:0}
+  .barrow .lab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .weeknav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .weeknav .ttl{font-weight:650}
+  .days{display:flex;gap:7px;align-items:flex-end;height:168px;padding:6px 2px 0}
+  .day{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+  .daycol{width:100%;max-width:38px;display:flex;flex-direction:column-reverse;border-radius:7px 7px 3px 3px;
+    overflow:hidden;background:var(--soft);min-height:3px}
+  .daycol>span{display:block}
+  .daylab{font-size:11.5px;color:var(--muted);font-weight:600}
+  .daytot{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .today .daylab{color:var(--accent)}
+  .muted{color:var(--muted)}
+  .hint{font-size:12.5px;color:var(--muted)}
+  .grid2{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .f{display:flex;flex-direction:column;gap:4px}
+  .f label{font-size:12px;color:var(--muted);font-weight:600}
+  .entry{display:grid;grid-template-columns:78px 16px 1fr auto auto;gap:10px;align-items:center;
+    padding:8px 2px;border-top:1px solid var(--line);font-size:13.5px}
+  .entry:first-child{border-top:none}
+  .tag{display:inline-block;background:var(--soft);border-radius:6px;padding:2px 7px;font-size:12px;color:var(--muted)}
+  .right{text-align:right}
+  .collapse{display:none}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  .empty{color:var(--muted);font-size:13.5px;padding:8px 2px}
+  .target-ok{color:var(--good)}
+  .status{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12.5px}
+  .status .dot{width:9px;height:9px}
+  /* Countdown-Timer */
+  .cd-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:4px}
+  .cd-display{font-size:clamp(48px,14vw,76px);line-height:1;font-weight:680;
+    font-variant-numeric:tabular-nums;letter-spacing:-.03em;text-align:center}
+  .cd-display.run{color:var(--accent)}
+  .cd-display.done{color:var(--danger)}
+  .cd-bar{width:100%;height:10px}
+  .cd-presets{display:flex;gap:6px;flex-wrap:wrap}
+  .cd-ctrls{display:flex;gap:8px;align-items:center;width:100%;flex-wrap:wrap}
+  .cd-opt{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer}
+  .cd-opt input{width:auto}
+  @keyframes cdflash{0%,100%{background:var(--card)}50%{background:rgba(209,67,67,.16)}}
+  .cd-flash{animation:cdflash .9s ease-in-out 3}
+  #__toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);
+    color:var(--card);padding:10px 16px;border-radius:10px;font-size:13.5px;box-shadow:var(--shadow);
+    z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;text-align:center}
+  @media(max-width:560px){
+    .barrow{grid-template-columns:96px 1fr auto}
+    .entry{grid-template-columns:70px 14px 1fr auto;}
+    .entry .enote{display:none}
+    .active-time{font-size:26px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row" style="margin-bottom:6px">
+    <div>
+      <h1>Projekt-Zeittracker</h1>
+      <div class="sub" id="todayLabel"></div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn-ghost btn-sm" href="/" id="systemLink" style="text-decoration:none">← Projektsystem</a>
+    <button class="btn-ghost btn-sm" id="manualToggle">+ Zeit nachtragen</button>
+  </div>
+
+  <div class="status" id="cloudStatus" title="Speicherort deiner Daten">
+    <span class="dot" id="cloudDot" style="background:var(--muted)"></span>
+    <span class="hint" id="cloudText">Speicher wird geprüft …</span>
+  </div>
+
+  <div class="card active-bar" id="activeBar" style="display:none"></div>
+
+  <div class="card collapse" id="manualCard">
+    <h2>Zeit manuell nachtragen</h2>
+    <div class="grid2">
+      <div class="f"><label>Projekt</label><select id="mProj"></select></div>
+      <div class="f"><label>Datum</label><input type="date" id="mDate"></div>
+      <div class="f"><label>Stunden</label><input type="number" id="mH" min="0" max="24" value="0"></div>
+      <div class="f"><label>Minuten</label><input type="number" id="mM" min="0" max="59" value="0"></div>
+      <div class="f" style="flex:1;min-width:140px"><label>Notiz (optional)</label><input type="text" id="mNote" placeholder="z. B. Investoren-Call"></div>
+      <button class="btn-primary" id="mSave">Eintragen</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Projekte</h2>
+    <div id="projectsList"></div>
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+      <input type="text" id="newName" placeholder="Neues Projekt …" style="flex:1;min-width:160px">
+      <div class="row" style="gap:6px">
+        <input type="number" id="newTarget" min="0" step="0.5" placeholder="h/Woche" title="Wochenziel in Stunden (optional)" style="width:92px">
+        <button class="btn-primary" id="addBtn">Hinzufügen</button>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:8px">Tipp: Das Wochenziel (h/Woche) ist optional — es zeigt dir in der Wochenansicht Soll gegen Ist.</div>
+  </div>
+
+  <div class="card" id="countdownCard">
+    <h2>Countdown-Timer</h2>
+    <div class="grid2">
+      <div class="f" style="flex:1;min-width:150px"><label>Projekt</label><select id="cdProj"></select></div>
+      <div class="f"><label>Minuten</label><input type="number" id="cdMin" min="0" max="999" value="25"></div>
+      <div class="f"><label>Sekunden</label><input type="number" id="cdSec" min="0" max="59" value="0"></div>
+      <div class="f" style="flex:1;min-width:150px">
+        <label>Schnellwahl</label>
+        <div class="cd-presets" id="cdPresets">
+          <button class="btn-sm" data-min="5">5</button>
+          <button class="btn-sm" data-min="15">15</button>
+          <button class="btn-sm" data-min="25">25</button>
+          <button class="btn-sm" data-min="30">30</button>
+          <button class="btn-sm" data-min="45">45</button>
+          <button class="btn-sm" data-min="60">60</button>
+        </div>
+      </div>
+    </div>
+    <div class="cd-wrap">
+      <div class="cd-display mono" id="cdDisplay">25:00</div>
+      <div class="bar cd-bar"><span id="cdBar" style="width:100%;background:var(--accent)"></span></div>
+      <div class="cd-ctrls">
+        <button class="btn-primary" id="cdStart">Start</button>
+        <button id="cdStop">Stoppen</button>
+        <button id="cdReset">Zurücksetzen</button>
+        <div class="spacer"></div>
+        <label class="cd-opt" title="Legt nach Ablauf automatisch einen Eintrag über die eingestellte Zeit beim gewählten Projekt an.">
+          <input type="checkbox" id="cdLog" checked> Fokuszeit dem Projekt gutschreiben
+        </label>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px">Projekt wählen, Zeit einstellen, Start — bei 0 ertönt ein Signalton. Läuft auch weiter, wenn du die Seite neu lädst.</div>
+  </div>
+
+  <div class="card">
+    <h2>Heute</h2>
+    <div id="todayView"></div>
+  </div>
+
+  <div class="card">
+    <div class="weeknav">
+      <button class="btn-ghost btn-sm" id="wPrev">‹</button>
+      <div class="ttl" id="weekTitle"></div>
+      <button class="btn-ghost btn-sm" id="wNext">›</button>
+      <button class="btn-ghost btn-sm" id="wToday">Heute</button>
+      <div class="spacer"></div>
+      <div class="pill muted" id="weekTotal"></div>
+    </div>
+    <div class="days" id="dayChart"></div>
+    <div style="margin-top:16px" id="weekProjects"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">Einträge dieser Woche</h2>
+      <div class="spacer"></div>
+      <button class="btn-ghost btn-sm" id="entriesToggle">anzeigen</button>
+    </div>
+    <div id="entriesView" class="collapse" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Daten</h2>
+    <div class="toolbar">
+      <button class="btn-sm" id="expCsv">CSV exportieren (für Excel)</button>
+      <button class="btn-sm" id="expJson">Backup (JSON)</button>
+      <button class="btn-sm" id="impBtn">Backup importieren</button>
+      <input type="file" id="impFile" accept="application/json,.json" style="display:none">
+    </div>
+    <div id="importConfirm" class="row" style="display:none;margin-top:12px">
+      <span class="muted">Import ersetzt alle aktuellen Daten (lokal und in der Cloud).</span>
+      <div class="spacer"></div>
+      <button class="btn-sm" id="impCancel">Abbrechen</button>
+      <button class="btn-primary btn-sm" id="impConfirm">Ersetzen</button>
+    </div>
+    <div class="hint" style="margin-top:10px">Wenn du in claude.ai angemeldet bist, werden deine Projekte und Zeiten automatisch in der Cloud gespeichert und zwischen deinen Geräten synchronisiert — zusätzlich liegt eine lokale Kopie in diesem Browser. CSV/JSON dienen als Backup bzw. für Excel.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY="zeittracker_v1";
+  var PROJ="projects", ENT="entries";
+  var PALETTE=["#2f6fde","#1f9d57","#d14343","#e07b1a","#8b5cf6","#0ea5b7","#db2777","#4f8f3a","#c99a16","#3aa0e0"];
+  var WD=["Mo","Di","Mi","Do","Fr","Sa","So"];
+  var state={projects:[],entries:[],running:null,weekOffset:0,countdown:null};
+  var pendingImport=null;
+
+  /* ---------- lokale Kopie (Cache / Offline / Fallback) ---------- */
+  function load(){
+    try{var raw=localStorage.getItem(KEY);
+      if(raw){var d=JSON.parse(raw);state.projects=d.projects||[];state.entries=d.entries||[];state.running=d.running||null;state.countdown=d.countdown||null;}
+    }catch(e){}
+  }
+  function save(){
+    try{localStorage.setItem(KEY,JSON.stringify({projects:state.projects,entries:state.entries,running:state.running,countdown:state.countdown}));}catch(e){}
+    if(backend&&!applyingRemote)scheduleBackendPush();
+  }
+
+  /* ---------- Cloud-Datenbank (optional, ohne Login) ---------- */
+  var cloud=null;            // DB-Namespace oder null (claude.ai-Artefakt)
+  var cloudState="checking"; // checking | local | connecting | cloud | cloud_slow | error
+  var backend=false;         // eigener /api/data-Server aktiv (z. B. auf Vercel)
+  var applyingRemote=false;  // true, während Server-Daten übernommen werden
+  var lastKnownUpdatedAt=0;  // Zeitstempel des zuletzt bekannten Server-Stands
+  var pushTimer=null;
+  function noop(){}
+  function cloudFatal(e){
+    var c=e&&e.code;
+    if(c==="revoked"||c==="not_granted"||c==="capability_disabled"||c==="capability_removed"){
+      cloud=null;cloudState="local";updateCloudStatus();
+    }
+  }
+  function cloudWrite(mk){
+    if(!cloud)return;
+    try{
+      mk().catch(function(e){
+        if(e&&e.code==="unavailable"){setTimeout(function(){if(cloud){try{mk().catch(cloudFatal);}catch(_){}}},1600);}
+        else cloudFatal(e);
+      });
+    }catch(e){cloudFatal(e);}
+  }
+  function pProject(p){cloudWrite(function(){return cloud.collection(PROJ).doc(p.id).set(p);});}
+  function pDelProject(id){cloudWrite(function(){return cloud.collection(PROJ).doc(id).delete();});}
+  function pEntry(e){cloudWrite(function(){return cloud.collection(ENT).doc(e.id).set(e);});}
+  function pDelEntry(id){cloudWrite(function(){return cloud.collection(ENT).doc(id).delete();});}
+
+  function updateCloudStatus(){
+    var dot=document.getElementById("cloudDot"),txt=document.getElementById("cloudText");
+    if(!dot||!txt)return;
+    var map={
+      checking:["var(--muted)","Speicher wird geprüft …"],
+      local:["var(--muted)","Nur lokal gespeichert – Cloud-Datenbank in dieser Ansicht nicht verfügbar."],
+      local_file:["var(--muted)","Nur lokal – die Seite wurde als Datei geöffnet (kein Server-Sync)."],
+      local_nodb:["var(--warn)","Nur lokal – am Server ist noch keine Datenbank verbunden. Prüfen unter /api/status"],
+      local_unreachable:["var(--muted)","Nur lokal – der Server ist nicht erreichbar."],
+      connecting:["var(--warn)","Verbinde mit Cloud …"],
+      cloud:["var(--good)","☁ Cloud-Sync aktiv – deine Daten sind geräteübergreifend gespeichert."],
+      cloud_slow:["var(--warn)","Cloud antwortet gerade nicht – angezeigte Daten evtl. nicht aktuell."],
+      error:["var(--danger)","Cloud nicht erreichbar – es wird lokal gespeichert."]
+    };
+    var m=map[cloudState]||map.local;dot.style.background=m[0];txt.textContent=m[1];
+  }
+
+  async function initCloud(){
+    if(!(window.claude&&window.claude.use)){initBackend();return;}
+    cloudState="connecting";updateCloudStatus();
+    try{cloud=await claude.use("db");}catch(e){cloud=null;}
+    if(!cloud){cloudState="local";updateCloudStatus();return;}
+    // Erst-Migration: wenn die Cloud leer ist, lokale Daten hochladen
+    try{
+      var ps=await cloud.collection(PROJ).get();
+      var es=await cloud.collection(ENT).get();
+      if(ps.empty&&es.empty&&(state.projects.length||state.entries.length)){
+        for(var i=0;i<state.projects.length;i++){await cloud.collection(PROJ).doc(state.projects[i].id).set(state.projects[i]);}
+        for(var j=0;j<state.entries.length;j++){await cloud.collection(ENT).doc(state.entries[j].id).set(state.entries[j]);}
+      }
+    }catch(e){cloudFatal(e);if(!cloud){return;}}
+    // Live abonnieren (Projekte + Einträge)
+    cloud.collection(PROJ).onSnapshot(function(snap){
+      state.projects=snap.docs.map(function(d){return d.data();});
+      if(!snap.metadata.fromCache){cloudState="cloud";}
+      updateCloudStatus();save();render();
+    },function(e){cloudFatal(e);cloudState="error";updateCloudStatus();});
+    cloud.collection(ENT).onSnapshot(function(snap){
+      state.entries=snap.docs.map(function(d){return d.data();});
+      if(!snap.metadata.fromCache){cloudState="cloud";}
+      updateCloudStatus();save();render();
+    },function(e){cloudFatal(e);cloudState="error";updateCloudStatus();});
+    setTimeout(function(){if(cloudState==="connecting"){cloudState="cloud_slow";updateCloudStatus();}},10000);
+  }
+
+  /* ---------- Server-Sync über /api/data (ohne Login, z. B. auf Vercel) ---------- */
+  function scheduleBackendPush(){
+    if(!backend)return;
+    if(pushTimer)clearTimeout(pushTimer);
+    pushTimer=setTimeout(backendPush,800);
+  }
+  async function backendPush(){
+    pushTimer=null;if(!backend)return;
+    try{
+      var r=await fetch("/api/data",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({projects:state.projects,entries:state.entries})});
+      if(!r.ok)throw 0;
+      var j=await r.json();
+      if(j&&j.updatedAt)lastKnownUpdatedAt=j.updatedAt;
+      cloudState="cloud";updateCloudStatus();
+    }catch(e){cloudState="cloud_slow";updateCloudStatus();}
+  }
+  function applyRemote(remote){
+    if(!remote)return;
+    applyingRemote=true;
+    state.projects=Array.isArray(remote.projects)?remote.projects:[];
+    state.entries=Array.isArray(remote.entries)?remote.entries:[];
+    lastKnownUpdatedAt=remote.updatedAt||lastKnownUpdatedAt;
+    save();render();
+    applyingRemote=false;
+  }
+  function startBackendPoll(){
+    setInterval(async function(){
+      if(!backend||applyingRemote||pushTimer)return;
+      try{
+        var r=await fetch("/api/data",{cache:"no-store"});
+        if(!r.ok)return;
+        var j=await r.json();
+        if(j&&j.configured&&j.data&&j.data.updatedAt&&j.data.updatedAt!==lastKnownUpdatedAt)applyRemote(j.data);
+        if(cloudState==="cloud_slow"){cloudState="cloud";updateCloudStatus();}
+      }catch(e){}
+    },5000);
+  }
+  async function initBackend(){
+    if(!/^https?:$/.test(location.protocol)){cloudState="local_file";updateCloudStatus();return;}
+    cloudState="connecting";updateCloudStatus();
+    try{
+      var r=await fetch("/api/data",{cache:"no-store"});
+      if(!r.ok)throw 0;
+      var j=await r.json();
+      if(!j||!j.configured){backend=false;cloudState="local_nodb";updateCloudStatus();return;}
+      backend=true;
+      var remote=j.data||{projects:[],entries:[],updatedAt:0};
+      var hasRemote=(remote.projects&&remote.projects.length)||(remote.entries&&remote.entries.length);
+      var hasLocal=state.projects.length||state.entries.length;
+      if(hasRemote)applyRemote(remote);
+      else if(hasLocal){lastKnownUpdatedAt=0;await backendPush();}
+      else lastKnownUpdatedAt=remote.updatedAt||0;
+      cloudState="cloud";updateCloudStatus();
+      startBackendPoll();
+    }catch(e){backend=false;cloudState="local_unreachable";updateCloudStatus();}
+  }
+
+  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+  function pad(n){return (n<10?"0":"")+n;}
+  function dateKey(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+  function parseKey(k){var p=k.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
+  function today(){return new Date();}
+  function fmt(min){min=Math.round(min);var h=Math.floor(min/60),m=min%60;return h+":"+pad(m);}
+  function fmtH(min){return (min/60).toFixed(2).replace(".",",");}
+  function fmtClock(sec){sec=Math.max(0,Math.ceil(sec));var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return h>0?(h+":"+pad(m)+":"+pad(s)):(m+":"+pad(s));}
+  function startOfWeek(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate());var day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);return x;}
+  function isoWeek(d){var t=new Date(d.getFullYear(),d.getMonth(),d.getDate());var day=(t.getDay()+6)%7;t.setDate(t.getDate()-day+3);
+    var first=new Date(t.getFullYear(),0,4);var fday=(first.getDay()+6)%7;first.setDate(first.getDate()-fday+3);return 1+Math.round((t-first)/(7*864e5));}
+  function proj(id){for(var i=0;i<state.projects.length;i++)if(state.projects[i].id===id)return state.projects[i];return null;}
+  function runMin(){return state.running?(Date.now()-state.running.startedAt)/60000:0;}
+  function dayTotal(pid,key){var s=0;for(var i=0;i<state.entries.length;i++){var e=state.entries[i];if(e.projectId===pid&&e.date===key)s+=e.min;}
+    if(state.running&&state.running.projectId===pid&&key===dateKey(today()))s+=runMin();return s;}
+  function weekDays(){var mon=startOfWeek(today());mon.setDate(mon.getDate()+state.weekOffset*7);var out=[];for(var i=0;i<7;i++){var x=new Date(mon);x.setDate(mon.getDate()+i);out.push(x);}return out;}
+  function weekDaysCurrent(){var mon=startOfWeek(today());var out=[];for(var i=0;i<7;i++){var x=new Date(mon);x.setDate(mon.getDate()+i);out.push(x);}return out;}
+  function fmtDate(d){return pad(d.getDate())+"."+pad(d.getMonth()+1)+".";}
+  function escapeHtml(s){return (s==null?"":String(s)).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+
+  function toast(msg){
+    var t=document.getElementById("__toast");
+    if(!t){t=document.createElement("div");t.id="__toast";document.body.appendChild(t);}
+    t.textContent=msg;t.style.opacity="1";clearTimeout(t._h);t._h=setTimeout(function(){t.style.opacity="0";},2800);
+  }
+
+  /* ---------- Audio: Signalton bei 0 ---------- */
+  var audioCtx=null;
+  function ensureAudio(){
+    try{
+      if(!audioCtx){var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;audioCtx=new AC();}
+      if(audioCtx.state==="suspended")audioCtx.resume();
+    }catch(e){}
+  }
+  function beep(){
+    if(!audioCtx)return;
+    try{
+      var now=audioCtx.currentTime;
+      for(var i=0;i<3;i++){
+        var o=audioCtx.createOscillator(),g=audioCtx.createGain();
+        o.type="sine";o.frequency.value=880;
+        var t0=now+i*0.5;
+        g.gain.setValueAtTime(0.0001,t0);
+        g.gain.exponentialRampToValueAtTime(0.5,t0+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+0.4);
+        o.connect(g);g.connect(audioCtx.destination);
+        o.start(t0);o.stop(t0+0.42);
+      }
+    }catch(e){}
+  }
+
+  function addProject(name,targetH){
+    name=(name||"").trim();if(!name)return;
+    var used={};state.projects.forEach(function(p){used[p.color]=1;});
+    var color=PALETTE.find(function(c){return !used[c];})||PALETTE[state.projects.length%PALETTE.length];
+    var tgt=targetH>0?Math.round(targetH*60):null;
+    var np={id:uid(),name:name,color:color,weeklyTargetMin:tgt,createdAt:Date.now()};
+    state.projects.push(np);save();render();pProject(np);
+  }
+  function removeProject(id){
+    var remIds=state.entries.filter(function(e){return e.projectId===id;}).map(function(e){return e.id;});
+    state.projects=state.projects.filter(function(p){return p.id!==id;});
+    state.entries=state.entries.filter(function(e){return e.projectId!==id;});
+    if(state.running&&state.running.projectId===id)state.running=null;
+    if(state.countdown&&state.countdown.projectId===id)state.countdown=null;
+    save();render();
+    pDelProject(id);remIds.forEach(pDelEntry);
+  }
+  function toggleTimer(id){
+    if(state.running&&state.running.projectId===id){stopTimer();return;}
+    if(state.running)stopTimer(true);
+    state.running={projectId:id,startedAt:Date.now()};save();render();
+  }
+  function stopTimer(silent){
+    if(!state.running)return;var min=runMin();var ent=null;
+    if(min>=0.02){ent={id:uid(),projectId:state.running.projectId,date:dateKey(today()),min:min,note:"",ts:Date.now()};state.entries.push(ent);}
+    state.running=null;save();if(ent)pEntry(ent);if(!silent)render();
+  }
+  function addManual(pid,dkey,min,note){var ent={id:uid(),projectId:pid,date:dkey,min:min,note:note||"",ts:Date.now(),manual:true};state.entries.push(ent);save();pEntry(ent);render();}
+  function delEntry(id){state.entries=state.entries.filter(function(e){return e.id!==id;});save();pDelEntry(id);render();}
+
+  /* ---------- Countdown-Timer (laufender Zustand bleibt geräte-lokal) ---------- */
+  function cdRemaining(){
+    var c=state.countdown;if(!c)return 0;
+    if(c.running&&c.endAt)return Math.max(0,(c.endAt-Date.now())/1000);
+    return Math.max(0,c.remainingSec||0);
+  }
+  function startCountdown(){
+    var c=state.countdown;
+    if(c&&c.running){c.remainingSec=cdRemaining();c.running=false;c.endAt=null;save();renderCountdown();return;}
+    if(c&&!c.finished&&c.remainingSec>0.4){ensureAudio();c.running=true;c.endAt=Date.now()+c.remainingSec*1000;save();renderCountdown();return;}
+    var pid=document.getElementById("cdProj").value;
+    if(!pid){toast("Bitte zuerst ein Projekt anlegen und auswählen.");return;}
+    var m=parseInt(document.getElementById("cdMin").value,10)||0;
+    var s=parseInt(document.getElementById("cdSec").value,10)||0;
+    var total=m*60+s;
+    if(total<=0){toast("Bitte eine Zeit größer als 0 einstellen.");return;}
+    ensureAudio();
+    state.countdown={id:uid(),projectId:pid,totalSec:total,remainingSec:total,endAt:Date.now()+total*1000,
+      running:true,finished:false,logOnFinish:document.getElementById("cdLog").checked};
+    save();renderCountdown();
+  }
+  function resetCountdown(){state.countdown=null;save();renderCountdown();}
+  function stopCountdown(){
+    var c=state.countdown;if(!c||c.finished)return;
+    var elapsedSec=Math.max(0,(c.totalSec||0)-cdRemaining());
+    var p=proj(c.projectId);var credited=0;
+    if(c.logOnFinish&&elapsedSec>=1&&p){
+      var ent={id:uid(),projectId:c.projectId,date:dateKey(today()),min:elapsedSec/60,note:"Countdown",ts:Date.now()};
+      state.entries.push(ent);pEntry(ent);credited=elapsedSec/60;
+    }
+    state.countdown=null;save();render();
+    if(credited>0)toast("Timer gestoppt – "+fmt(credited)+" gutgeschrieben"+(p?" ("+p.name+")":"")+".");
+    else toast("Timer gestoppt.");
+  }
+  function finishCountdown(){
+    var c=state.countdown;if(!c)return;
+    c.running=false;c.remainingSec=0;c.finished=true;c.endAt=null;
+    if(c.logOnFinish){
+      var p=proj(c.projectId);
+      if(p){var ent={id:"cd_"+(c.id||uid()),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()};
+        var ix=state.entries.map(function(x){return x.id;}).indexOf(ent.id);
+        if(ix>=0)state.entries[ix]=ent;else state.entries.push(ent);
+        pEntry(ent);}
+    }
+    save();
+    beep();
+    var card=document.getElementById("countdownCard");
+    if(card){card.classList.add("cd-flash");setTimeout(function(){card.classList.remove("cd-flash");},2800);}
+    var p2=proj(c.projectId);
+    toast("⏰ Zeit abgelaufen"+(p2?" – "+p2.name:"")+(c.logOnFinish&&p2?" ("+fmt(c.totalSec/60)+" gutgeschrieben)":"")+".");
+    render();
+  }
+  function fillCountdownProjects(){
+    var sel=document.getElementById("cdProj");if(!sel)return;var cur=state.countdown?state.countdown.projectId:sel.value;
+    sel.innerHTML="";
+    state.projects.forEach(function(p){var o=document.createElement("option");o.value=p.id;o.textContent=p.name;sel.appendChild(o);});
+    if(cur&&proj(cur))sel.value=cur;
+  }
+  function renderCountdown(){
+    var c=state.countdown;
+    var disp=document.getElementById("cdDisplay");
+    var bar=document.getElementById("cdBar");
+    var startBtn=document.getElementById("cdStart");
+    var sel=document.getElementById("cdProj");
+    if(!disp)return;
+    fillCountdownProjects();
+    var running=c&&c.running;
+    var inputsDisabled=!!(c&&(c.running||(!c.finished&&c.remainingSec>0.4)));
+    document.getElementById("cdMin").disabled=inputsDisabled;
+    document.getElementById("cdSec").disabled=inputsDisabled;
+    document.getElementById("cdLog").disabled=inputsDisabled;
+    if(sel)sel.disabled=inputsDisabled;
+    var stopBtn=document.getElementById("cdStop");
+    if(stopBtn)stopBtn.style.display=(c&&!c.finished)?"":"none";
+    if(c){
+      var rem=cdRemaining();
+      disp.textContent=fmtClock(rem);
+      disp.className="cd-display mono"+(c.finished?" done":(running?" run":""));
+      var pct=c.totalSec>0?Math.max(0,Math.min(100,rem/c.totalSec*100)):0;
+      bar.style.width=pct+"%";
+      bar.style.background=c.finished?"var(--danger)":(running?"var(--accent)":"var(--muted)");
+      if(c.finished)startBtn.textContent="Neu starten";
+      else if(running)startBtn.textContent="Pause";
+      else startBtn.textContent="Fortsetzen";
+    }else{
+      var m=parseInt(document.getElementById("cdMin").value,10)||0;
+      var s=parseInt(document.getElementById("cdSec").value,10)||0;
+      disp.textContent=fmtClock(m*60+s);
+      disp.className="cd-display mono";
+      bar.style.width="100%";bar.style.background="var(--accent)";
+      startBtn.textContent="Start";
+    }
+  }
+  function tickCountdown(){
+    var c=state.countdown;
+    if(c&&c.running){
+      if(cdRemaining()<=0){finishCountdown();return;}
+      var disp=document.getElementById("cdDisplay");var bar=document.getElementById("cdBar");
+      if(disp){var rem=cdRemaining();disp.textContent=fmtClock(rem);
+        bar.style.width=(c.totalSec>0?Math.max(0,Math.min(100,rem/c.totalSec*100)):0)+"%";}
+    }
+  }
+
+  var confirmState={};
+  function el(tag,cls,html){var n=document.createElement(tag);if(cls)n.className=cls;if(html!=null)n.innerHTML=html;return n;}
+
+  function renderActive(){
+    var bar=document.getElementById("activeBar");
+    if(!state.running){bar.style.display="none";return;}
+    var p=proj(state.running.projectId);if(!p){state.running=null;bar.style.display="none";return;}
+    bar.style.display="flex";bar.innerHTML="";
+    var dot=el("span","dot");dot.style.background=p.color;dot.style.width="14px";dot.style.height="14px";
+    var info=el("div");info.innerHTML="<div class='muted' style='font-size:12.5px;font-weight:600'>LÄUFT</div><div><strong>"+escapeHtml(p.name)+"</strong></div>";
+    var time=el("div","active-time mono");time.id="activeTime";time.textContent=fmt(runMin());
+    var stop=el("button","btn-primary");stop.textContent="Stopp";stop.onclick=function(){stopTimer();};
+    bar.appendChild(dot);bar.appendChild(info);bar.appendChild(el("div","spacer"));bar.appendChild(time);bar.appendChild(stop);
+  }
+
+  function renderProjects(){
+    var box=document.getElementById("projectsList");box.innerHTML="";
+    if(!state.projects.length){box.appendChild(el("div","empty","Noch keine Projekte. Lege unten dein erstes an."));return;}
+    var tkey=dateKey(today());var wdays=weekDaysCurrent();
+    state.projects.forEach(function(p){
+      var rowt=dayTotal(p.id,tkey);var wt=0;wdays.forEach(function(d){wt+=dayTotal(p.id,dateKey(d));});
+      var r=el("div","proj");var dot=el("span","dot");dot.style.background=p.color;
+      var nm=el("div");nm.style.minWidth="0";nm.style.flex="1";
+      nm.innerHTML="<div class='name'>"+escapeHtml(p.name)+"</div><div class='meta'>heute "+fmt(rowt)+" · Woche "+fmt(wt)+(p.weeklyTargetMin?" / "+fmt(p.weeklyTargetMin)+" Ziel":"")+"</div>";
+      var running=state.running&&state.running.projectId===p.id;
+      var btn=el("button",running?"btn-primary btn-sm":"btn-sm");btn.textContent=running?"Stopp":"Start";btn.onclick=function(){toggleTimer(p.id);};
+      var del=el("button","btn-danger btn-sm");
+      if(confirmState[p.id]){del.textContent="Löschen?";del.onclick=function(){removeProject(p.id);};}
+      else{del.textContent="✕";del.title="Projekt löschen";del.onclick=function(){confirmState={};confirmState[p.id]=true;render();setTimeout(function(){delete confirmState[p.id];},3000);};}
+      r.appendChild(dot);r.appendChild(nm);r.appendChild(btn);r.appendChild(del);box.appendChild(r);
+    });
+  }
+
+  function renderToday(){
+    var box=document.getElementById("todayView");box.innerHTML="";var tkey=dateKey(today());
+    var rows=state.projects.map(function(p){return {p:p,min:dayTotal(p.id,tkey)};}).filter(function(r){return r.min>0.1;});
+    rows.sort(function(a,b){return b.min-a.min;});
+    if(!rows.length){box.appendChild(el("div","empty","Heute noch nichts erfasst."));return;}
+    var max=Math.max.apply(null,rows.map(function(r){return r.min;}));
+    var tot=rows.reduce(function(s,r){return s+r.min;},0);
+    rows.forEach(function(r){
+      var row=el("div","barrow");var lab=el("div","lab");var d=el("span","dot");d.style.background=r.p.color;
+      var nm=el("span");nm.textContent=r.p.name;lab.appendChild(d);lab.appendChild(nm);
+      var bar=el("div","bar");var sp=el("span");sp.style.width=(r.min/max*100)+"%";sp.style.background=r.p.color;bar.appendChild(sp);
+      var val=el("div","pill mono");val.textContent=fmt(r.min);
+      row.appendChild(lab);row.appendChild(bar);row.appendChild(val);box.appendChild(row);
+    });
+    var sum=el("div","row");sum.style.marginTop="8px";sum.innerHTML="<div class='spacer'></div><div class='pill'>Gesamt heute: "+fmt(tot)+"</div>";box.appendChild(sum);
+  }
+
+  function renderWeek(){
+    var days=weekDays();var mon=days[0],sun=days[6];
+    document.getElementById("weekTitle").textContent="KW "+isoWeek(mon)+" · "+fmtDate(mon)+"–"+fmtDate(sun);
+    var chart=document.getElementById("dayChart");chart.innerHTML="";
+    var dayTotals=days.map(function(d){var k=dateKey(d);var segs=[];var t=0;
+      state.projects.forEach(function(p){var m=dayTotal(p.id,k);if(m>0.1){segs.push({c:p.color,m:m});t+=m;}});return {segs:segs,t:t,d:d,k:k};});
+    var maxDay=Math.max.apply(null,dayTotals.map(function(x){return x.t;}).concat([1]));
+    var tkey=dateKey(today());
+    dayTotals.forEach(function(dt){
+      var col=el("div","day"+(dt.k===tkey?" today":""));
+      var stack=el("div","daycol");stack.style.height=(dt.t>0?Math.max(6,(dt.t/maxDay*130)):3)+"px";
+      dt.segs.forEach(function(s){var seg=el("span");seg.style.height=(s.m/dt.t*100)+"%";seg.style.background=s.c;stack.appendChild(seg);});
+      var tot=el("div","daytot");tot.textContent=dt.t>0?fmt(dt.t):"";
+      var lab=el("div","daylab");lab.textContent=WD[(dt.d.getDay()+6)%7];
+      col.appendChild(el("div","spacer"));col.appendChild(tot);col.appendChild(stack);col.appendChild(lab);chart.appendChild(col);
+    });
+    var wrap=document.getElementById("weekProjects");wrap.innerHTML="";
+    var rows=state.projects.map(function(p){var m=0;days.forEach(function(d){m+=dayTotal(p.id,dateKey(d));});return {p:p,min:m};}).filter(function(r){return r.min>0.1||r.p.weeklyTargetMin;});
+    rows.sort(function(a,b){return b.min-a.min;});
+    var weekTot=rows.reduce(function(s,r){return s+r.min;},0);
+    document.getElementById("weekTotal").textContent="Woche gesamt: "+fmt(weekTot);
+    if(!rows.length){wrap.appendChild(el("div","empty","Diese Woche noch nichts erfasst."));return;}
+    var max=Math.max.apply(null,rows.map(function(r){return Math.max(r.min,r.p.weeklyTargetMin||0);}));
+    rows.forEach(function(r){
+      var row=el("div","barrow");var lab=el("div","lab");var d=el("span","dot");d.style.background=r.p.color;var nm=el("span");nm.textContent=r.p.name;lab.appendChild(d);lab.appendChild(nm);
+      var bar=el("div","bar");bar.style.position="relative";var sp=el("span");sp.style.width=(r.min/max*100)+"%";sp.style.background=r.p.color;bar.appendChild(sp);
+      if(r.p.weeklyTargetMin){var mark=el("span");mark.style.cssText="position:absolute;top:-2px;height:12px;width:2px;background:var(--ink);opacity:.5;border-radius:0;left:"+(r.p.weeklyTargetMin/max*100)+"%";bar.appendChild(mark);}
+      var val=el("div","pill mono");
+      if(r.p.weeklyTargetMin){var ok=r.min>=r.p.weeklyTargetMin;val.innerHTML="<span class='"+(ok?"target-ok":"")+"'>"+fmt(r.min)+"</span> <span class='muted' style='font-weight:500'>/ "+fmt(r.p.weeklyTargetMin)+"</span>";}
+      else val.textContent=fmt(r.min);
+      row.appendChild(lab);row.appendChild(bar);row.appendChild(val);wrap.appendChild(row);
+    });
+  }
+
+  function renderEntries(){
+    var box=document.getElementById("entriesView");box.innerHTML="";
+    var days=weekDays();var lo=dateKey(days[0]),hi=dateKey(days[6]);
+    var list=state.entries.filter(function(e){return e.date>=lo&&e.date<=hi;}).slice().sort(function(a,b){return (b.date).localeCompare(a.date)||(b.ts||0)-(a.ts||0);});
+    if(!list.length){box.appendChild(el("div","empty","Keine Einträge in dieser Woche."));return;}
+    list.forEach(function(e){
+      var p=proj(e.projectId);if(!p)return;var r=el("div","entry");
+      var dt=el("div","mono muted");dt.textContent=fmtDate(parseKey(e.date));
+      var d=el("span","dot");d.style.background=p.color;
+      var nm=el("div");nm.innerHTML="<strong style='font-weight:600'>"+escapeHtml(p.name)+"</strong>"+(e.note?" <span class='enote muted'>· "+escapeHtml(e.note)+"</span>":"")+(e.manual?" <span class='tag'>manuell</span>":"");
+      var val=el("div","pill mono right");val.textContent=fmt(e.min);
+      var del=el("button","btn-ghost btn-sm");del.textContent="✕";del.title="Eintrag löschen";del.onclick=function(){delEntry(e.id);};
+      r.appendChild(dt);r.appendChild(d);r.appendChild(nm);r.appendChild(val);r.appendChild(del);box.appendChild(r);
+    });
+  }
+
+  function fillManualProjects(){
+    var sel=document.getElementById("mProj");var cur=sel.value;sel.innerHTML="";
+    state.projects.forEach(function(p){var o=el("option");o.value=p.id;o.textContent=p.name;sel.appendChild(o);});
+    if(cur)sel.value=cur;
+  }
+
+  function render(){
+    document.getElementById("todayLabel").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+    renderActive();renderProjects();renderToday();renderWeek();renderEntries();fillManualProjects();renderCountdown();
+  }
+
+  async function getDownloads(){try{if(window.claude&&claude.use)return await claude.use("downloads");}catch(e){}return null;}
+  async function offerFile(filename,data){
+    var dl=await getDownloads();
+    if(!dl){toast("Export in dieser Ansicht nicht verfügbar — öffne das Tool im eigenen Fenster.");return;}
+    try{await dl.save({filename:filename,data:data});toast("Datei gespeichert.");}
+    catch(err){if(err&&err.code==="declined")return;toast("Export nicht möglich"+(err&&err.message?": "+err.message:"")+".");}
+  }
+  function buildCsv(){
+    var rows=[["Datum","Projekt","Minuten","Stunden","Notiz","Quelle"]];
+    state.entries.slice().sort(function(a,b){return a.date.localeCompare(b.date);}).forEach(function(e){
+      var p=proj(e.projectId);if(!p)return;
+      rows.push([e.date,p.name,String(Math.round(e.min)),fmtH(e.min),(e.note||"").replace(/[\r\n;]/g," "),e.manual?"manuell":(e.note==="Countdown"?"Countdown":"Timer")]);
+    });
+    return "﻿"+rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(";");}).join("\r\n");
+  }
+
+  function doImport(){
+    if(!pendingImport)return;
+    var oldProjIds=state.projects.map(function(p){return p.id;});
+    var oldEntIds=state.entries.map(function(e){return e.id;});
+    state.projects=pendingImport.projects||[];
+    state.entries=pendingImport.entries||[];
+    state.running=pendingImport.running||null;
+    state.countdown=pendingImport.countdown||null;
+    pendingImport=null;document.getElementById("importConfirm").style.display="none";
+    save();render();
+    if(cloud){
+      var keepP={};state.projects.forEach(function(p){keepP[p.id]=1;});
+      var keepE={};state.entries.forEach(function(e){keepE[e.id]=1;});
+      oldProjIds.forEach(function(id){if(!keepP[id])pDelProject(id);});
+      oldEntIds.forEach(function(id){if(!keepE[id])pDelEntry(id);});
+      state.projects.forEach(pProject);
+      state.entries.forEach(pEntry);
+    }
+    toast("Backup importiert.");
+  }
+
+  function init(){
+    load();
+    // Beim Laden: abgelaufenen Countdown sauber abschließen (ohne Ton, da kein Nutzer-Klick)
+    if(state.countdown&&state.countdown.running&&cdRemaining()<=0){
+      var c=state.countdown;c.running=false;c.remainingSec=0;c.finished=true;c.endAt=null;
+      if(c.logOnFinish){var p=proj(c.projectId);if(p){var e0={id:"cd_"+(c.id||uid()),projectId:c.projectId,date:dateKey(today()),min:c.totalSec/60,note:"Countdown",ts:Date.now()};state.entries.push(e0);}}
+      save();
+    }
+    document.getElementById("mDate").value=dateKey(today());
+    document.getElementById("addBtn").onclick=function(){
+      var n=document.getElementById("newName"),t=document.getElementById("newTarget");
+      addProject(n.value,parseFloat(t.value));n.value="";t.value="";n.focus();
+    };
+    document.getElementById("newName").addEventListener("keydown",function(e){if(e.key==="Enter")document.getElementById("addBtn").click();});
+    document.getElementById("wPrev").onclick=function(){state.weekOffset--;render();};
+    document.getElementById("wNext").onclick=function(){state.weekOffset++;render();};
+    document.getElementById("wToday").onclick=function(){state.weekOffset=0;render();};
+    document.getElementById("manualToggle").onclick=function(){
+      var c=document.getElementById("manualCard");var open=c.style.display==="block";
+      c.style.display=open?"none":"block";this.textContent=open?"+ Zeit nachtragen":"− schließen";
+    };
+    document.getElementById("mSave").onclick=function(){
+      var pid=document.getElementById("mProj").value;if(!pid){toast("Bitte zuerst ein Projekt anlegen.");return;}
+      var h=parseInt(document.getElementById("mH").value,10)||0,m=parseInt(document.getElementById("mM").value,10)||0;
+      var min=h*60+m;if(min<=0){toast("Bitte eine Dauer größer als 0 angeben.");return;}
+      var dk=document.getElementById("mDate").value||dateKey(today());
+      addManual(pid,dk,min,document.getElementById("mNote").value.trim());
+      document.getElementById("mH").value=0;document.getElementById("mM").value=0;document.getElementById("mNote").value="";
+      toast("Eingetragen.");
+    };
+    document.getElementById("cdStart").onclick=startCountdown;
+    document.getElementById("cdStop").onclick=stopCountdown;
+    document.getElementById("cdReset").onclick=resetCountdown;
+    document.getElementById("cdPresets").addEventListener("click",function(e){
+      var b=e.target.closest("button[data-min]");if(!b)return;
+      if(state.countdown&&(state.countdown.running||(!state.countdown.finished&&state.countdown.remainingSec>0.4)))return;
+      document.getElementById("cdMin").value=b.getAttribute("data-min");
+      document.getElementById("cdSec").value=0;
+      if(state.countdown&&state.countdown.finished)state.countdown=null;
+      renderCountdown();
+    });
+    document.getElementById("cdMin").addEventListener("input",function(){if(!state.countdown)renderCountdown();});
+    document.getElementById("cdSec").addEventListener("input",function(){if(!state.countdown)renderCountdown();});
+    document.getElementById("entriesToggle").onclick=function(){
+      var v=document.getElementById("entriesView");var open=v.style.display==="block";
+      v.style.display=open?"none":"block";this.textContent=open?"anzeigen":"ausblenden";
+    };
+    document.getElementById("expCsv").onclick=function(){offerFile("zeittracker_"+dateKey(today())+".csv",buildCsv());};
+    document.getElementById("expJson").onclick=function(){offerFile("zeittracker_backup_"+dateKey(today())+".json",JSON.stringify({projects:state.projects,entries:state.entries,running:state.running,countdown:state.countdown,exportedAt:new Date().toISOString()},null,2));};
+    document.getElementById("impBtn").onclick=function(){document.getElementById("impFile").click();};
+    document.getElementById("impFile").onchange=function(e){
+      var f=e.target.files[0];if(!f)return;var rd=new FileReader();
+      rd.onload=function(){try{var d=JSON.parse(rd.result);if(!d.projects)throw 0;pendingImport=d;document.getElementById("importConfirm").style.display="flex";}
+        catch(err){toast("Datei konnte nicht gelesen werden.");}};
+      rd.readAsText(f);e.target.value="";
+    };
+    document.getElementById("impCancel").onclick=function(){pendingImport=null;document.getElementById("importConfirm").style.display="none";};
+    document.getElementById("impConfirm").onclick=doImport;
+    render();
+    updateCloudStatus();
+    initCloud();
+    setInterval(function(){if(state.running){var t=document.getElementById("activeTime");if(t)t.textContent=fmt(runMin());}},1000);
+    setInterval(tickCountdown,250);
+    setInterval(function(){if(state.running){renderProjects();renderToday();renderWeek();}},15000);
+  }
+  init();
+})();
+</script>
+</body>
+</html>

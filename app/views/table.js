@@ -1,0 +1,127 @@
+// Tabellen-Ansicht: wie das Sheet, kompakt. Klick auf eine Zelle öffnet sie groß im Seitenpanel.
+
+import { h, icon } from "../ui.js";
+import { FIELDS, ERFOLG_PARTS } from "../model.js";
+import { live, areas, patch, minutesOf, todosOf, createVorhaben } from "../state.js";
+import { ui, openPanel, openVorhaben, rerender, persistUi } from "../nav.js";
+import { statusSelect, deadlineBadge, preview, statusClass } from "../components.js";
+import { outlineFields } from "../fields.js";
+import { fmtH } from "../model.js";
+
+const COLS = ["naechste", "strategie", "ressourcen", "lernen", "versuch", "erfolg", "uebergabe", "ergebnis", "abschluss", "lessons"];
+const LABEL = Object.fromEntries(FIELDS.map((f) => [f.key, f.label]));
+LABEL.abschluss = "Sauberer Abschluss";
+
+const byStartThenCreated = (a, b) => ((a.start || "9999") < (b.start || "9999") ? -1 : (a.start || "9999") > (b.start || "9999") ? 1 : (a.created || 0) - (b.created || 0));
+
+function textCell(v, key, text, extraCls) {
+  const active = ui.panel && ui.panel.vid === v.id && ui.panel.field === key;
+  return h("td", { class: "c-text" + (active ? " active" : "") + (extraCls ? " " + extraCls : ""), tabindex: "0",
+    onclick: () => openPanel(v.id, key), onkeydown: (e) => { if (e.key === "Enter") openPanel(v.id, key); } },
+    h("div", { class: "clamp2" }, text || h("span", { class: "muted" }, "—")));
+}
+
+function erfolgCell(v) {
+  const e = v.erfolg || {};
+  const lines = ERFOLG_PARTS.filter((p) => p.key !== "kill" && preview(e[p.key])).map((p) => p.label + ": " + preview(e[p.key]));
+  const killMissing = !preview(e.kill) && v.status !== "Idee" && v.status !== "Abgeschlossen";
+  const active = ui.panel && ui.panel.vid === v.id && ui.panel.field === "erfolg";
+  return h("td", { class: "c-text" + (active ? " active" : ""), tabindex: "0", onclick: () => openPanel(v.id, "erfolg"),
+    onkeydown: (ev) => { if (ev.key === "Enter") openPanel(v.id, "erfolg"); } },
+    h("div", { class: "clamp2" }, lines.join(" · ") || h("span", { class: "muted" }, "—")),
+    killMissing ? h("div", { class: "kill-missing" }, icon("warn"), "Killkriterium fehlt") : null);
+}
+
+function abschlussCell(v) {
+  const a = v.abschluss || {};
+  const txt = a.done ? "✓ gemacht" : v.status === "Abschluss-Review" ? "offen" : "";
+  return h("td", { class: "c-small" + (a.done ? " ok" : ""), tabindex: "0", onclick: () => openPanel(v.id, "abschluss") },
+    txt || h("span", { class: "muted" }, "—"));
+}
+
+function dateIn(v, key, label) {
+  return h("input", { type: "date", class: "date-in small", value: v[key] || "", "aria-label": label, title: label,
+    onchange: (e) => patch("vorhaben", v.id, { [key]: e.target.value }) });
+}
+
+function row(v) {
+  const open = todosOf(v.id).filter((t) => !t.done).length;
+  const min = minutesOf(v.id);
+  const titleActive = ui.panel && ui.panel.vid === v.id && ui.panel.field === "titel";
+  return h("tr", { class: "row " + statusClass(v.status) + (v.status === "Abgeschlossen" ? " is-done" : "") },
+    h("td", { class: "c-title sticky" + (titleActive ? " active" : ""), onclick: () => openPanel(v.id, "titel") },
+      h("div", { class: "clamp3 title-text" }, v.title || h("span", { class: "muted" }, "Ohne Titel")),
+      h("div", { class: "title-meta" },
+        deadlineBadge(v),
+        h("button", { class: "icon-btn ghost tiny", title: "Als Dokument öffnen", "aria-label": "Als Dokument öffnen",
+          onclick: (e) => { e.stopPropagation(); openVorhaben(v.id); } }, icon("open")))),
+    h("td", { class: "c-status" }, statusSelect(v, "small")),
+    v.status === "Idee"
+      ? h("td", { class: "c-dates" }, h("span", { class: "muted" }, "—"))
+      : h("td", { class: "c-dates" }, dateIn(v, "start", "Laufzeit ab"), dateIn(v, "end", "Laufzeit bis")),
+    COLS.map((k) => k === "erfolg" ? erfolgCell(v) : k === "abschluss" ? abschlussCell(v) : textCell(v, k, preview((v.fields || {})[k]))),
+    h("td", { class: "c-small num" }, min >= 1 ? fmtH(min) : h("span", { class: "muted" }, "—")),
+    h("td", { class: "c-small num" }, h("a", { href: "#/v/" + v.id, onclick: (e) => e.stopPropagation() }, open ? open + " offen" : "—")));
+}
+
+export function tableView() {
+  const ncol = 3 + COLS.length + 2;
+  const tbody = h("tbody");
+  const shown = areas().filter((a) => ui.area === "all" || a.id === ui.area);
+  let any = false;
+
+  shown.forEach((a) => {
+    const all = live("vorhaben").filter((v) => v.areaId === a.id);
+    const hiddenDone = ui.showDone ? 0 : all.filter((v) => v.status === "Abgeschlossen").length;
+    const main = all.filter((v) => v.status !== "Idee" && (ui.showDone || v.status !== "Abgeschlossen")).sort(byStartThenCreated);
+    const ideas = all.filter((v) => v.status === "Idee").sort((x, y) => (x.created || 0) - (y.created || 0));
+
+    tbody.append(h("tr", { class: "area-row" },
+      h("td", { colspan: ncol },
+        h("div", { class: "area-head" },
+          h("span", { class: "area-name" }, a.name),
+          h("span", { class: "muted small" }, all.length + " Vorhaben"),
+          h("button", { class: "btn small", onclick: () => { const v = createVorhaben({ areaId: a.id, status: "Vorbereitung", fields: outlineFields() }); openVorhaben(v.id); } },
+            icon("plus"), "Vorhaben")))));
+
+    const groups = [];
+    main.forEach((v) => {
+      const g = v.gruppe || "";
+      let grp = groups.find((x) => x.name === g);
+      if (!grp) { grp = { name: g, items: [] }; groups.push(grp); }
+      grp.items.push(v);
+    });
+    groups.sort((x, y) => (x.name === "" ? -1 : y.name === "" ? 1 : 0));
+    groups.forEach((g) => {
+      if (g.name) tbody.append(h("tr", { class: "group-row" }, h("td", { colspan: ncol }, h("span", { class: "stick" }, g.name))));
+      g.items.forEach((v) => { tbody.append(row(v)); any = true; });
+    });
+    if (hiddenDone) {
+      tbody.append(h("tr", { class: "hint-row" }, h("td", { colspan: ncol },
+        h("button", { class: "link-btn stick", onclick: () => { ui.showDone = true; persistUi(); rerender(); } },
+          hiddenDone + " abgeschlossene" + (hiddenDone === 1 ? "s Vorhaben" : " Vorhaben") + " ausgeblendet – anzeigen"))));
+    }
+    if (ideas.length) {
+      tbody.append(h("tr", { class: "group-row ideas" }, h("td", { colspan: ncol }, h("span", { class: "stick" }, "Ideen-Park"))));
+      ideas.forEach((v) => { tbody.append(row(v)); any = true; });
+    }
+  });
+
+  const table = h("table", { class: "grid" },
+    h("thead", null, h("tr", null,
+      h("th", { class: "sticky" }, "Vorhaben / Hypothese"),
+      h("th", null, "Status"),
+      h("th", null, "Laufzeit"),
+      COLS.map((k) => h("th", null, LABEL[k])),
+      h("th", null, "Zeit"),
+      h("th", null, "To-Dos"))),
+    tbody);
+
+  return h("div", { class: "view-table" },
+    h("div", { class: "toolbar" },
+      h("label", { class: "toggle" },
+        h("input", { type: "checkbox", checked: ui.showDone, onchange: (e) => { ui.showDone = e.target.checked; persistUi(); rerender(); } }),
+        "Abgeschlossene zeigen"),
+      h("span", { class: "muted small" }, "Klick auf eine Zelle öffnet sie groß zum Lesen und Bearbeiten.")),
+    any || shown.length ? h("div", { class: "tablewrap" }, table) : h("div", { class: "empty-state" }, "Noch keine Vorhaben."));
+}

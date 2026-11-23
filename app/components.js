@@ -1,9 +1,9 @@
 // Bausteine, die mehrere Ansichten teilen.
 
 import { h, icon, toast } from "./ui.js";
-import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, todayKey, diffDays } from "./model.js";
+import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, fmtClock, todayKey, diffDays } from "./model.js";
 import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify } from "./alarm.js";
-import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, patch, removeItem } from "./state.js";
+import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, pauseTimer, resumeTimer, elapsedMs, countdownEnd, patch, removeItem } from "./state.js";
 import { openVorhaben, persistUi } from "./nav.js";
 import { onlyHeadings } from "./editor.js";
 
@@ -84,6 +84,39 @@ export function timerButton({ todoId = null, vorhabenId, dur = null, big = false
       else startTimerUI({ vorhabenId, todoId, dur });
     },
   }, icon(on ? "stop" : "play"), label ? h("span", null, on ? "Stopp" : label) : null);
+}
+
+// Anzeige des laufenden Timers: Countdown (Restzeit) oder Stoppuhr (gelaufene Zeit), ohne Pausen
+export function runClock(r) {
+  // Countdown aufrunden (wie eine Küchenuhr: „4:00“ direkt nach dem Start einer Minute), Stoppuhr abrunden
+  return r.dur ? fmtClock(Math.ceil((r.dur * 1000 - elapsedMs(r)) / 1000)) : fmtClock(elapsedMs(r) / 1000);
+}
+export function runText(r) {
+  return (r.pausedAt ? "pausiert · " : "") + (r.dur ? "noch " : "") + runClock(r);
+}
+export const runPct = (r) => (r.dur ? Math.min(100, (elapsedMs(r) / (r.dur * 1000)) * 100) : 0);
+
+export function pauseButton({ big = false } = {}) {
+  const r = store.state.running;
+  if (!r || !r.start) return null;
+  const paused = !!r.pausedAt;
+  return h("button", {
+    class: "play pause" + (paused ? " paused" : "") + (big ? " big" : ""),
+    title: paused ? "Weiter" : "Pause", "aria-label": paused ? "Timer fortsetzen" : "Timer pausieren",
+    onclick: (e) => {
+      e.stopPropagation();
+      if (paused) {
+        resumeTimer();
+        const end = countdownEnd();
+        if (end) { ensureAudio(); scheduleAlarm(end); }
+        toast("Weiter geht's");
+      } else {
+        pauseTimer();
+        cancelAlarm();
+        toast("Pausiert – die Pause wird nicht gebucht");
+      }
+    },
+  }, icon(paused ? "play" : "pause"), h("span", null, paused ? "Weiter" : "Pause"));
 }
 
 export function estSelect(value, onchange, attrs) {

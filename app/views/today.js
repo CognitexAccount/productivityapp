@@ -4,7 +4,7 @@ import { h, icon } from "../ui.js";
 import { todayKey, addDays, fmtHM, fmtDate, fmtClock, DEFAULT_EST } from "../model.js";
 import { store, live, byId, isActive, sortTodos, addTodo, minutesRange } from "../state.js";
 import { ui, rerender } from "../nav.js";
-import { todoRow, timerButton, section, estSelect } from "../components.js";
+import { todoRow, timerButton, section, estSelect, pauseButton, runClock, runPct } from "../components.js";
 import { openTimeEntry } from "../timeentry.js";
 
 const inArea = (v) => v && (ui.area === "all" || v.areaId === ui.area);
@@ -54,10 +54,10 @@ export function todayView() {
       h("div", { class: "focus-lbl" }, "Du arbeitest gerade an"),
       h("div", { class: "focus-what" }, runT ? runT.title : "dem Vorhaben"),
       h("a", { class: "focus-v", href: "#/v/" + runV.id }, runV.title),
-      h("div", { class: "focus-lbl" }, r.dur ? "Countdown – noch" : "Stoppuhr läuft seit"),
-      h("div", { class: "focus-time", id: "focusTime" }, r.dur ? fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000)),
-      r.dur ? h("div", { class: "bar focus-bar" }, h("span", { class: "bar-fill", id: "focusBar", style: { width: Math.min(100, ((Date.now() - r.start) / (r.dur * 1000)) * 100) + "%" } })) : null,
-      timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, big: true, label: "Stopp" })) : null,
+      h("div", { class: "focus-lbl" }, r.pausedAt ? "Pausiert" : r.dur ? "Countdown – noch" : "Stoppuhr läuft seit"),
+      h("div", { class: "focus-time" + (r.pausedAt ? " paused" : ""), id: "focusTime" }, runClock(r)),
+      r.dur ? h("div", { class: "bar focus-bar" }, h("span", { class: "bar-fill", id: "focusBar", style: { width: runPct(r) + "%" } })) : null,
+      h("div", { class: "focus-btns" }, pauseButton({ big: true }), timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, big: true, label: "Stopp" }))) : null,
     h("div", { class: "todo-add today-add card-like" }, inp, sel, estSel, due, h("button", { class: "btn primary small", onclick: add }, icon("plus"), "Hinzufügen")),
     overdue.length ? section("t-over", "Überfällig", list(overdue), { ui, count: overdue.length }) : null,
     section("t-today", "Heute fällig", list(today), { ui, count: today.length || null }),

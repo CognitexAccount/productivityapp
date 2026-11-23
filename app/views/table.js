@@ -7,9 +7,8 @@ import { ui, openPanel, openVorhaben, rerender, persistUi } from "../nav.js";
 import { statusSelect, deadlineBadge, preview, statusClass } from "../components.js";
 import { fmtH } from "../model.js";
 
-const COLS = ["naechste", "strategie", "ressourcen", "lernen", "versuch", "erfolg", "uebergabe", "ergebnis", "abschluss", "lessons"];
+const COLS = FIELDS.map((f) => f.key);
 const LABEL = Object.fromEntries(FIELDS.map((f) => [f.key, f.label]));
-LABEL.abschluss = "Sauberer Abschluss";
 
 const byStartThenCreated = (a, b) => ((a.start || "9999") < (b.start || "9999") ? -1 : (a.start || "9999") > (b.start || "9999") ? 1 : (a.created || 0) - (b.created || 0));
 
@@ -22,20 +21,11 @@ function textCell(v, key, text, extraCls) {
 
 function erfolgCell(v) {
   const e = v.erfolg || {};
-  const lines = ERFOLG_PARTS.filter((p) => p.key !== "kill" && preview(e[p.key])).map((p) => p.label + ": " + preview(e[p.key]));
-  const killMissing = !preview(e.kill) && v.status !== "Idee" && v.status !== "Abgeschlossen";
+  const lines = ERFOLG_PARTS.filter((p) => preview(e[p.key])).map((p) => p.label + ": " + preview(e[p.key]));
   const active = ui.panel && ui.panel.vid === v.id && ui.panel.field === "erfolg";
   return h("td", { class: "c-text" + (active ? " active" : ""), tabindex: "0", onclick: () => openPanel(v.id, "erfolg"),
     onkeydown: (ev) => { if (ev.key === "Enter") openPanel(v.id, "erfolg"); } },
-    h("div", { class: "clamp2" }, lines.join(" · ") || h("span", { class: "muted" }, "—")),
-    killMissing ? h("div", { class: "kill-missing" }, icon("warn"), "Killkriterium fehlt") : null);
-}
-
-function abschlussCell(v) {
-  const a = v.abschluss || {};
-  const txt = a.done ? "✓ gemacht" : v.status === "Abschluss-Review" ? "offen" : "";
-  return h("td", { class: "c-small" + (a.done ? " ok" : ""), tabindex: "0", onclick: () => openPanel(v.id, "abschluss") },
-    txt || h("span", { class: "muted" }, "—"));
+    h("div", { class: "clamp2" }, lines.join(" · ") || h("span", { class: "muted" }, "—")));
 }
 
 function dateIn(v, key, label) {
@@ -58,9 +48,34 @@ function row(v) {
     v.status === "Idee"
       ? h("td", { class: "c-dates" }, h("span", { class: "muted" }, "—"))
       : h("td", { class: "c-dates" }, dateIn(v, "start", "Laufzeit ab"), dateIn(v, "end", "Laufzeit bis")),
-    COLS.map((k) => k === "erfolg" ? erfolgCell(v) : k === "abschluss" ? abschlussCell(v) : textCell(v, k, preview((v.fields || {})[k]))),
+    COLS.map((k) => (k === "erfolg" ? erfolgCell(v) : textCell(v, k, preview((v.fields || {})[k])))),
     h("td", { class: "c-small num" }, min >= 1 ? fmtH(min) : h("span", { class: "muted" }, "—")),
     h("td", { class: "c-small num" }, h("a", { href: "#/v/" + v.id, onclick: (e) => e.stopPropagation() }, open ? open + " offen" : "—")));
+}
+
+// Tabelle mit Pfeilen links/rechts, um durch alle Spalten zu blättern
+let updateArrows = null;
+window.addEventListener("resize", () => { if (updateArrows) updateArrows(); });
+// Nach jedem Zeichnen (auch nach wiederhergestellter Scroll-Position) aufrufen
+export function refreshTableArrows() { if (updateArrows && document.contains(document.querySelector(".tablewrap"))) updateArrows(); }
+function scroller(table) {
+  const wrap = h("div", { class: "tablewrap" }, table);
+  const step = (dir) => {
+    const sticky = wrap.querySelector("th.sticky");
+    const visible = wrap.clientWidth - (sticky ? sticky.offsetWidth : 0);
+    wrap.scrollBy({ left: dir * Math.max(220, visible * 0.8), behavior: "smooth" });
+  };
+  const left = h("button", { class: "tbl-arrow left", title: "Spalten nach links", "aria-label": "Spalten nach links", onclick: () => step(-1) }, icon("back"));
+  const right = h("button", { class: "tbl-arrow right", title: "Weitere Spalten rechts", "aria-label": "Spalten nach rechts", onclick: () => step(1) }, icon("next"));
+  const update = () => {
+    const max = wrap.scrollWidth - wrap.clientWidth - 2;
+    left.classList.toggle("hidden", wrap.scrollLeft <= 2);
+    right.classList.toggle("hidden", wrap.scrollLeft >= max);
+  };
+  wrap.addEventListener("scroll", update, { passive: true });
+  updateArrows = update;
+  left.classList.add("hidden");
+  return h("div", { class: "table-scroller" }, wrap, left, right);
 }
 
 export function tableView() {
@@ -122,5 +137,5 @@ export function tableView() {
         h("input", { type: "checkbox", checked: ui.showDone, onchange: (e) => { ui.showDone = e.target.checked; persistUi(); rerender(); } }),
         "Abgeschlossene zeigen"),
       h("span", { class: "muted small" }, "Klick auf eine Zelle öffnet sie groß zum Lesen und Bearbeiten.")),
-    any || shown.length ? h("div", { class: "tablewrap" }, table) : h("div", { class: "empty-state" }, "Noch keine Vorhaben."));
+    any || shown.length ? scroller(table) : h("div", { class: "empty-state" }, "Noch keine Vorhaben."));
 }

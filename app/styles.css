@@ -577,3 +577,45 @@ tr.is-done td { opacity: .62; }
   .today-add .sel { flex: 1 1 100%; }
   .days { height: 150px; } .day-col { height: 100px; }
 }
+
+/* ── Tabelle: Pfeile zum seitlichen Blättern ── */
+.table-scroller { position: relative; }
+.tbl-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 6; width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(20, 30, 50, .18);
+  display: grid; place-items: center; cursor: pointer; transition: opacity .15s;
+}
+.tbl-arrow:hover { border-color: var(--accent); color: var(--accent); }
+.tbl-arrow .ic { width: 20px; height: 20px; stroke-width: 2.4; }
+.tbl-arrow.left { left: 300px; }
+.tbl-arrow.right { right: 10px; }
+.tbl-arrow.hidden { opacity: 0; pointer-events: none; }
+
+/* ── Panel: Feld-Navigation ── */
+.chipnav { display: flex; align-items: center; gap: 4px; padding: 8px 8px; border-bottom: 1px solid var(--line); }
+.chipnav .chips { flex: 1; padding: 0; border: 0; position: relative; }
+.chipnav .icon-btn { flex: none; }
+.panel-field-row { display: flex; align-items: baseline; gap: 10px; justify-content: space-between; }
+.panel-foot { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+
+/* ── Leitfragen ── */
+details.hints li.hint-head { list-style: none; margin: 8px 0 2px -18px; font-weight: 700; color: var(--ink); }
+details.hints li.hint-head:first-child { margin-top: 2px; }
+.hint-extra { margin: 6px 0 4px; font-size: 13px; color: var(--muted); font-style: italic; }
+
+/* ── Pause ── */
+.play.pause { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--card)); color: var(--warn); }
+.play.pause.paused { border-color: color-mix(in srgb, var(--good) 45%, transparent); background: color-mix(in srgb, var(--good) 10%, var(--card)); color: var(--good); }
+.runbar.paused { background: var(--soft); }
+.runbar.paused .pulse { animation: none; background: var(--muted); box-shadow: none; }
+.runbar .play span { display: inline; }
+.focus-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.focus-time.paused { color: var(--muted); }
+.card-actions:empty { display: none; }
+@media (max-width: 760px) {
+  .tbl-arrow.left { left: 206px; }
+  .tbl-arrow { width: 38px; height: 38px; }
+  .runbar .play span { display: none; }
+  .runbar .play { padding: 0; width: 40px; }
+  .panel-foot .btn { padding: 7px 10px; }
+}

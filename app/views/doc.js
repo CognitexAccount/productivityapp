@@ -5,7 +5,7 @@ import { FIELDS, DEFAULT_EST, todayKey, weekStartKey, addDays, fmtDate, fmtHM, f
 import { byId, live, areas, patch, removeItem, todosOf, minutesOf, addTodo, addEntry, sortTodos } from "../state.js";
 import { ui, go, rerender } from "../nav.js";
 import { statusSelect, deadlineBadge, todoRow, timerButton, section, changeStatus, estSelect } from "../components.js";
-import { fieldEditor, titleEditor, abschlussBlock } from "../fields.js";
+import { fieldEditor, titleEditor } from "../fields.js";
 import { downloadPdf, sendToDrive, preloadDrive } from "../export.js";
 import { openTimeEntry } from "../timeentry.js";
 
@@ -105,16 +105,12 @@ export function docView(vid) {
     onchange: (e) => patch("vorhaben", v.id, { gruppe: e.target.value.trim() }) });
   const dur = v.start && v.end ? diffDays(v.start, v.end) : null;
 
-  const sections = [];
-  FIELDS.forEach((f) => {
-    sections.push(section("f-" + f.key, f.label, fieldEditor(v, f.key), { ui }));
-    if (f.key === "naechste") {
-      const open = todosOf(v.id).filter((t) => !t.done).length;
-      sections.push(section("todos", "To-Dos", todosBlock(v), { ui, count: open || null }));
-      sections.push(section("zeit", "Zeit", timeBlock(v), { ui }));
-    }
-    if (f.key === "ergebnis") sections.push(section("abschluss", "Sauberer Abschluss", abschlussBlock(v), { ui }));
-  });
+  const open = todosOf(v.id).filter((t) => !t.done).length;
+  const sections = [
+    section("todos", "To-Dos", todosBlock(v), { ui, count: open || null }),
+    section("zeit", "Zeit", timeBlock(v), { ui }),
+    ...FIELDS.map((f) => section("f-" + f.key, f.label, fieldEditor(v, f.key), { ui })),
+  ];
 
   const pdfBtn = h("button", { class: "btn small", title: "Vorhaben als PDF herunterladen" }, icon("file"), h("span", { class: "hide-sm" }, "PDF"));
   pdfBtn.addEventListener("click", () => runExport(pdfBtn, () => downloadPdf(v.id)));

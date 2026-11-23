@@ -18,7 +18,6 @@ function sortFor(s) {
 function card(v) {
   const open = todosOf(v.id).filter((t) => !t.done).length;
   const min = minutesOf(v.id);
-  const killMissing = !preview((v.erfolg || {}).kill) && v.status !== "Idee" && v.status !== "Abgeschlossen";
   const dates = v.start || v.end ? (fmtShort(v.start) || "?") + " – " + (fmtShort(v.end) || "?") : "";
   const c = h("article", {
     class: "card", draggable: "true", tabindex: "0", "data-id": v.id,
@@ -35,11 +34,9 @@ function card(v) {
       dates ? h("span", { class: "meta-item" }, dates) : null,
       deadlineBadge(v),
       open ? h("span", { class: "meta-item" }, "☐ " + open) : null,
-      min >= 1 ? h("span", { class: "meta-item" }, icon("clock"), fmtH(min)) : null,
-      killMissing ? h("span", { class: "meta-item warn-txt", title: "Killkriterium fehlt" }, icon("warn"), "Kill") : null),
-    h("div", { class: "card-actions", onclick: (e) => e.stopPropagation() },
-      statusSelect(v, "small"),
-      v.status === "Idee" ? h("button", { class: "btn small primary", onclick: () => changeStatus(v.id, "Vorbereitung") }, "Befördern →") : null));
+      min >= 1 ? h("span", { class: "meta-item" }, icon("clock"), fmtH(min)) : null),
+    v.status === "Idee" ? h("div", { class: "card-actions", onclick: (e) => e.stopPropagation() },
+      h("button", { class: "btn small primary", onclick: () => changeStatus(v.id, "Vorbereitung") }, "Befördern →")) : null);
   return c;
 }
 
@@ -73,12 +70,8 @@ export function boardView() {
     if (over) col.append(h("div", { class: "wip-warn" }, icon("warn"), "Mehr als " + wip + " Vorhaben laufen parallel – Verzettelungsgefahr."));
 
     const list = h("div", { class: "col-list" });
-    if (s === "Abgeschlossen" && !ui.boardDoneOpen && items.length) {
-      list.append(h("button", { class: "link-btn", onclick: () => { ui.boardDoneOpen = true; rerender(); } }, items.length + " abgeschlossen – anzeigen"));
-    } else {
-      items.forEach((v) => list.append(card(v)));
-      if (!items.length) list.append(h("div", { class: "col-empty" }, s === "Idee" ? "Noch keine Ideen geparkt." : "—"));
-    }
+    items.forEach((v) => list.append(card(v)));
+    if (!items.length) list.append(h("div", { class: "col-empty" }, s === "Idee" ? "Noch keine Ideen geparkt." : "—"));
     col.append(list);
     board.append(col);
   });

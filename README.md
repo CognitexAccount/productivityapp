@@ -29,8 +29,8 @@ lassen sich in den Einstellungen bearbeiten. Erfolg / Neutral / Misserfolg /
 ## Ansichten
 
 - **Heute** (mobil zuerst): überfällige, heutige und kommende To-Dos mit großem Start-Button
-- **Tabelle**: wie das Sheet, Zellen gekürzt – Klick öffnet die Zelle groß im Seitenpanel
-- **Board**: Kanban nach Status, Drag & Drop, **WIP-Grenze** für „Läuft“, Ideen-Park
+- **Tabelle**: wie das Sheet, Zellen gekürzt – Pfeile ‹ › blättern durch alle Spalten; Klick öffnet die Zelle groß im Seitenpanel, dort mit ‹ › durch alle Felder
+- **Board**: Kanban nach Status (Status per Drag & Drop), **WIP-Grenze** für „Läuft“, Ideen-Park
 - **Dokument**: ein Vorhaben als Seite mit allen Kapiteln, To-Dos, Zeit; PDF-Export & Drive
 - **Zeitleiste**: Laufzeiten als Balken, „heute parallel aktiv“, überzogene Laufzeiten
 - **Wochenreview**: Zeit pro Tag und pro Vorhaben (Soll/Ist über das Wochenziel), alle
@@ -40,11 +40,9 @@ lassen sich in den Einstellungen bearbeiten. Erfolg / Neutral / Misserfolg /
 
 Dazu: **Countdown am To-Do** (läuft die Zeitangabe herunter, bucht automatisch,
 **Signalton bis zu 2 Minuten**, bis er ausgestellt wird; „+5 Min“ / „Erledigt“),
-**Stoppuhr** am Vorhaben, **Zeit nachtragen** (überall), Tagesübersicht und
+**Pause** (Pausen werden nicht gebucht), **Stoppuhr** am Vorhaben, **Zeit nachtragen** (überall), Tagesübersicht und
 Wocheneinträge im Wochenreview, **CSV-Export** für Excel, **PDF-Export** pro Vorhaben,
-**An Google Drive senden**, **Idee parken** (überall, Taste `i`), **Fristwächter**,
-**Abschluss-Assistent** (Ergebnis → Resistance oder Personal End Point →
-Stakeholder-Checkliste → Lessons Learned → Feiern), JSON-Backup.
+**An Google Drive senden**, **Idee parken** (überall, Taste `i`), **Fristwächter**, JSON-Backup.
 
 > Signalton: wird beim Start des Countdowns eingeplant und klingelt auch bei Tab im
 > Hintergrund. Am Handy klingelt er nur, solange der Browser/die App geöffnet ist

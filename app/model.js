@@ -21,9 +21,6 @@ export const TITLE_HINTS = [
 // Felder eines Vorhabens. hints = Leitfragen (aus den Kommentaren im Sheet).
 // outline = wird beim Befördern einer Idee als Gliederung vorbefüllt.
 export const FIELDS = [
-  { key: "naechste", label: "Nächste Schritte", hints: [
-    "Was ist der nächste konkrete Schritt? (Tipp: konkrete Schritte als To-Do mit Datum anlegen – dann landen sie in „Heute“.)",
-  ] },
   { key: "strategie", label: "Strategie-Bezug", hints: [
     "Wie zahlt dieses Projekt auf meine definierten Ziele ein?",
   ] },
@@ -54,6 +51,20 @@ export const FIELDS = [
   { key: "ergebnis", label: "Ergebnis", hints: [
     "Habe ich das Projekt aus Resistance abgeschlossen oder weil ich meinen Personal End Point erreicht habe?",
   ] },
+  { key: "abschluss", label: "Sauberer Abschluss", hints: [
+    "Bei Misserfolg:",
+    "Habe ich Stakeholder persönlich informiert, oder gibt es noch offene Gespräche?",
+    "Habe ich Stakeholder so informiert, dass ich schon von einem Abschluss bzw. Erfolg des nächsten Projektes ausgegangen bin, oder habe ich offen gelassen, was passieren wird?",
+    "Habe ich einen zuverlässigen Eindruck hinterlassen? Habe ich mich bei wichtigen Stakeholdern persönlich bedankt?",
+    "Habe ich noch offene Commitments eingelöst?",
+    "Habe ich vorhandene Assets übertragen oder archiviert?",
+    "Habe ich entsprechende Tools gekündigt?",
+    "Bei Erfolg:",
+    "Habe ich einen eindeutigen Übergabeplan oder bereits eine neue Person eingearbeitet?",
+    "Bei Neutral:",
+    "Habe ich klare Kriterien für eine Fortsetzung bzw. Neuadjustierung des Projektes definiert?",
+    "Habe ich die Ergebnisse und Daten sauber dokumentiert?",
+  ] },
   { key: "lessons", label: "Lessons Learned", hints: [
     "Was waren die wichtigsten Learnings?",
     "Was habe ich gut gemacht, was würde ich heute anders machen?",
@@ -69,32 +80,6 @@ export const ERFOLG_PARTS = [
   { key: "misserfolg", label: "Misserfolg" },
   { key: "kill", label: "Killkriterium" },
 ];
-
-// Neutraler Standardtext. Die eigene Beschreibung liegt in der Datenbank
-// (Einstellungen → „Resistance oder Personal End Point?“) und hat Vorrang.
-export const RESISTANCE_TEXT =
-  "Resistance: ein plötzlicher innerer Widerstand – das Projekt fühlt sich sinnlos an, andere Optionen wirken viel verlockender. " +
-  "Personal End Point: die ruhige, sich verfestigende Gewissheit, dass die vorab definierten Kriterien erfüllt sind oder das Lernziel erreicht ist " +
-  "und das Projekt guten Gewissens beendet werden kann.";
-
-export const OUTCOMES = ["Erfolg", "Neutral", "Misserfolg"];
-export const ABSCHLUSS_CHECKS = {
-  Misserfolg: [
-    ["m1", "Habe ich Stakeholder persönlich informiert, oder gibt es noch offene Gespräche?"],
-    ["m2", "Habe ich Stakeholder so informiert, dass offen bleibt, was als Nächstes passiert (statt schon den Erfolg des nächsten Projekts vorwegzunehmen)?"],
-    ["m3", "Habe ich einen zuverlässigen Eindruck hinterlassen und mich bei wichtigen Stakeholdern persönlich bedankt?"],
-    ["m4", "Habe ich noch offene Commitments eingelöst?"],
-    ["m5", "Habe ich vorhandene Assets übertragen oder archiviert?"],
-    ["m6", "Habe ich entsprechende Tools gekündigt?"],
-  ],
-  Erfolg: [
-    ["e1", "Habe ich einen eindeutigen Übergabeplan oder bereits eine neue Person eingearbeitet?"],
-  ],
-  Neutral: [
-    ["n1", "Habe ich klare Kriterien für eine Fortsetzung bzw. Neuadjustierung des Projektes definiert?"],
-    ["n2", "Habe ich die Ergebnisse und Daten sauber dokumentiert?"],
-  ],
-};
 
 /* ── Datum & Zeit ── */
 export const pad = (n) => (n < 10 ? "0" : "") + n;

@@ -9,7 +9,7 @@
 // lässt sich dort Google Drive wählen).
 
 import { h, modal, toast } from "./ui.js";
-import { FIELDS, ERFOLG_PARTS, ABSCHLUSS_CHECKS, STATUS_LABEL, DEFAULT_EST, todayKey, fmtDate, fmtShort, fmtH, fmtHM } from "./model.js";
+import { FIELDS, ERFOLG_PARTS, STATUS_LABEL, DEFAULT_EST, todayKey, fmtDate, fmtShort, fmtH, fmtHM } from "./model.js";
 import { byId, live, areaName, todosOf, minutesOf, store } from "./state.js";
 import { sanitize } from "./editor.js";
 
@@ -118,42 +118,32 @@ export async function buildPdf(vid) {
   const section = (label, body) => { content.push({ text: label, style: "h2" }); content.push(...body); };
   const todos = todosOf(v.id);
 
+  if (todos.length) {
+    section("To-Dos", [{
+      table: {
+        headerRows: 1, widths: [20, "*", 48, 52, 46],
+        body: [
+          [{ text: "", style: "th" }, { text: "Aufgabe", style: "th" }, { text: "Dauer", style: "th" }, { text: "Fällig", style: "th" }, { text: "Erfasst", style: "th" }],
+          ...todos.map((t) => {
+            const m = live("timeEntries").filter((e) => e.todoId === t.id).reduce((s, e) => s + (e.min || 0), 0);
+            return [{ text: t.done ? "[x]" : "[  ]", bold: true, color: t.done ? "#1f9d57" : "#8a929e" }, { text: t.title, decoration: t.done ? "lineThrough" : undefined, color: t.done ? "#888" : undefined },
+              (t.est || DEFAULT_EST) + " Min", t.due ? fmtShort(t.due) : "–", m >= 1 ? fmtHM(m) + " h" : "–"];
+          }),
+        ],
+      },
+      layout: "lightHorizontalLines", margin: [0, 2, 0, 6],
+    }]);
+  }
+
   FIELDS.forEach((f) => {
     if (f.special === "erfolg") {
       const parts = ERFOLG_PARTS.filter((p) => (v.erfolg || {})[p.key]);
       if (parts.length) section(f.label, parts.flatMap((p) => [{ text: p.label, style: "sub" }, ...blocks(v.erfolg[p.key])]));
-      else if (v.status !== "Idee") section(f.label, [{ text: "Noch nicht definiert.", italics: true, color: "#888" }]);
       return;
     }
     const html = (v.fields || {})[f.key];
     if (html) section(f.label, blocks(html));
-    if (f.key === "naechste" && todos.length) {
-      section("To-Dos", [{
-        table: {
-          headerRows: 1, widths: [20, "*", 48, 52, 46],
-          body: [
-            [{ text: "", style: "th" }, { text: "Aufgabe", style: "th" }, { text: "Dauer", style: "th" }, { text: "Fällig", style: "th" }, { text: "Erfasst", style: "th" }],
-            ...todos.map((t) => {
-              const m = live("timeEntries").filter((e) => e.todoId === t.id).reduce((s, e) => s + (e.min || 0), 0);
-              return [{ text: t.done ? "[x]" : "[  ]", bold: true, color: t.done ? "#1f9d57" : "#8a929e" }, { text: t.title, decoration: t.done ? "lineThrough" : undefined, color: t.done ? "#888" : undefined },
-                (t.est || DEFAULT_EST) + " Min", t.due ? fmtShort(t.due) : "–", m >= 1 ? fmtHM(m) + " h" : "–"];
-            }),
-          ],
-        },
-        layout: "lightHorizontalLines", margin: [0, 2, 0, 6],
-      }]);
-    }
   });
-
-  const a = v.abschluss || {};
-  if (a.outcome || a.grund || a.done) {
-    const body = [];
-    if (a.outcome) body.push({ text: [{ text: "Ergebnis: ", bold: true }, a.outcome] });
-    if (a.grund) body.push({ text: [{ text: "Beendet aus: ", bold: true }, a.grund === "endpoint" ? "Personal End Point" : "Resistance"] });
-    if (a.outcome) body.push({ ul: ABSCHLUSS_CHECKS[a.outcome].map(([k, q]) => ((a.checks || {})[k] ? "[x] " : "[  ] ") + q), margin: [0, 4, 0, 4] });
-    body.push({ text: a.done ? "Sauberer Abschluss gemacht." : "Sauberer Abschluss noch offen.", italics: true });
-    section("Sauberer Abschluss", body);
-  }
 
   const docDef = {
     info: { title: v.title || "Vorhaben", creator: "Projektsystem" },

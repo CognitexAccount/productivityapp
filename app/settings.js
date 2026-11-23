@@ -93,7 +93,7 @@ export function openSettings() {
       h("section", null, h("h4", null, "Fokus"),
         h("label", { class: "inline-field" }, "Höchstens", wip, "Vorhaben gleichzeitig auf „Läuft“ (WIP-Grenze)")),
       h("section", null, h("h4", null, "Persönliche Texte"),
-        h("p", { class: "muted small" }, "Werden in deiner Datenbank gespeichert (nicht im Code) und im Abschluss bzw. beim Strategie-Bezug angezeigt."),
+        h("p", { class: "muted small" }, "Werden in deiner Datenbank gespeichert (nicht im Code) und bei den Leitfragen zu „Ergebnis“ bzw. „Strategie-Bezug“ angezeigt."),
         h("label", { class: "lbl" }, "Resistance oder Personal End Point? – deine Beschreibung"),
         h("textarea", { class: "txt", rows: 5, value: s.resistanceText || "", placeholder: "Wie fühlt sich Resistance bei dir an – und wie dein Personal End Point?",
           onchange: (e) => setSingleton("settings", { ...settings(), resistanceText: e.target.value.trim() }) }),

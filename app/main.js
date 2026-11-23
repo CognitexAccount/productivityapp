@@ -7,16 +7,14 @@ import {
   overdueVorhaben, onPinRequired, finishCountdown, countdownEnd, toggleTodo, setField, notify as notifyState,
 } from "./state.js";
 import { ui, setRender, go, persistUi } from "./nav.js";
-import { setStatusChanger, timerButton, startTimerUI } from "./components.js";
-import { setWizardOpener } from "./fields.js";
+import { setStatusChanger, timerButton, startTimerUI, pauseButton, runText, runClock, runPct } from "./components.js";
 import { onlyHeadings } from "./editor.js";
 import { ALARM_SEC, scheduleAlarm, cancelAlarm, isScheduled, syncAlarm, vibrate, notify } from "./alarm.js";
 import { openTimeEntry } from "./timeentry.js";
-import { openWizard } from "./wizard.js";
 import { openCapture } from "./capture.js";
 import { openSettings, pinPrompt } from "./settings.js";
-import { panelView } from "./panel.js";
-import { tableView } from "./views/table.js";
+import { panelView, centerActiveChip } from "./panel.js";
+import { tableView, refreshTableArrows } from "./views/table.js";
 import { boardView } from "./views/board.js";
 import { docView } from "./views/doc.js";
 import { todayView } from "./views/today.js";
@@ -59,11 +57,7 @@ setStatusChanger(async (vid, status) => {
     const n = live("vorhaben").filter((x) => x.status === "Läuft").length, wip = settings().wipLimit || 3;
     if (n > wip) toast("Achtung: " + n + " Vorhaben laufen parallel (WIP-Grenze " + wip + ")");
   }
-  if (status === "Abschluss-Review" && !(v.abschluss || {}).done) {
-    if (await confirmDialog("„" + (v.title || "Vorhaben").slice(0, 90) + "“ ist im Abschluss-Review. Abschluss-Assistenten jetzt starten?", { ok: "Assistent starten" })) openWizard(vid);
-  }
 });
-setWizardOpener(openWizard);
 onPinRequired(pinPrompt);
 
 /* ── Rendern ── */
@@ -106,22 +100,18 @@ function areaFilter(cls) {
     areas().map((a) => h("option", { value: a.id }, a.name)));
 }
 
-// Anzeige des laufenden Timers: Countdown (Restzeit) oder Stoppuhr (verstrichen)
-function runText(r) {
-  return r.dur ? "noch " + fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000);
-}
-const runPct = (r) => (r.dur ? Math.min(100, ((Date.now() - r.start) / (r.dur * 1000)) * 100) : 0);
 
 function runbar() {
   const r = store.state.running;
   if (!r || !r.start) return null;
   const v = byId("vorhaben", r.vorhabenId), t = r.todoId ? byId("todos", r.todoId) : null;
-  return h("div", { class: "runbar" + (r.dur ? " countdown" : "") },
+  return h("div", { class: "runbar" + (r.dur ? " countdown" : "") + (r.pausedAt ? " paused" : "") },
     h("span", { class: "pulse" }),
     h("div", { class: "run-info" },
       h("div", { class: "run-what clamp1" }, t ? t.title : "Stoppuhr am Vorhaben"),
       v ? h("a", { class: "run-v clamp1", href: "#/v/" + v.id }, v.title) : null),
     h("span", { class: "run-time num", id: "runTime" }, runText(r)),
+    pauseButton(),
     timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, label: "Stopp" }),
     r.dur ? h("span", { class: "run-progress", id: "runBar", style: { width: runPct(r) + "%" } }) : null);
 }
@@ -232,6 +222,8 @@ function render() {
   Object.entries(keep).forEach(([c, [l, t]]) => { const el = root.querySelector("." + c); if (el) { el.scrollLeft = l; el.scrollTop = t; } });
   const pb = root.querySelector(".panel-body");
   if (pb) pb.scrollTop = panelScroll;
+  refreshTableArrows();
+  centerActiveChip(root);
   window.scrollTo(0, y);
   document.title = (ui.route === "v" && byId("vorhaben", ui.param) ? (byId("vorhaben", ui.param).title || "Vorhaben").slice(0, 40) + " · " : viewTitle() ? viewTitle() + " · " : "") + "Projektsystem";
   if (ui.focusAfter) {
@@ -264,7 +256,7 @@ setInterval(() => {
   const rt = document.getElementById("runTime");
   if (rt) rt.textContent = runText(r);
   const ft = document.getElementById("focusTime");
-  if (ft) ft.textContent = r.dur ? fmtClock((r.start + r.dur * 1000 - Date.now()) / 1000) : fmtClock((Date.now() - r.start) / 1000);
+  if (ft) ft.textContent = runClock(r);
   ["runBar", "focusBar"].forEach((id) => { const el = document.getElementById(id); if (el) el.style.width = runPct(r) + "%"; });
 }, 1000);
 
@@ -287,6 +279,18 @@ function cleanupOutlines() {
       const heads = Array.from(d.querySelectorAll("h3,h4")).map((x) => x.textContent.trim());
       if (heads.length && heads.every((q) => qs.includes(q))) { setField(v.id, k, ""); n++; }
     });
+  });
+  // Frühere Angaben aus dem Abschluss-Assistenten als Text ins Feld „Sauberer Abschluss“ übernehmen
+  live("vorhaben").forEach((v) => {
+    const a = v.abschluss || {};
+    if ((v.fields || {}).abschluss || !(a.done || a.outcome || a.grund || a.feier)) return;
+    const esc = window.TextKit.esc, parts = [];
+    if (a.outcome) parts.push("<p><b>Ergebnis:</b> " + esc(a.outcome) + "</p>");
+    if (a.grund) parts.push("<p><b>Beendet aus:</b> " + (a.grund === "resistance" ? "Resistance" : "Personal End Point") + "</p>");
+    if (a.done) parts.push("<p>Sauberen Abschluss gemacht: Ja</p>");
+    if (a.feier) parts.push("<p><b>Gefeiert:</b> " + esc(a.feier) + "</p>");
+    setField(v.id, "abschluss", parts.join(""));
+    n++;
   });
   if (n) notifyState();
 }

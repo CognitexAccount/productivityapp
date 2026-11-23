@@ -89,10 +89,16 @@ function todoSort(a, b) {
 export const sortTodos = (list) => list.slice().sort(todoSort);
 export const todosOf = (vid) => sortTodos(live("todos").filter((t) => t.vorhabenId === vid));
 
+// Tatsächlich gelaufene Zeit des Timers in ms (ohne Pausen)
+export function elapsedMs(r) {
+  if (!r || !r.start) return 0;
+  const now = r.pausedAt || Date.now();
+  return Math.max(0, now - r.start - (r.pausedMs || 0));
+}
 export function runningMin(filter) {
   const r = store.state.running;
   if (!r || !r.start || !filter(r)) return 0;
-  return (Date.now() - r.start) / 60000;
+  return elapsedMs(r) / 60000;
 }
 export function minutesOf(vid, fromKey, toKey) {
   let m = 0;
@@ -174,6 +180,16 @@ export function startTimer({ vorhabenId, todoId = null, dur = null }) {
   if (r && r.start) stopTimer({ silent: true });
   setSingleton("running", { start: Date.now(), vorhabenId, todoId, dur: dur || null });
 }
+export function pauseTimer() {
+  const r = store.state.running;
+  if (!r || !r.start || r.pausedAt) return;
+  setSingleton("running", { ...r, pausedAt: Date.now() });
+}
+export function resumeTimer() {
+  const r = store.state.running;
+  if (!r || !r.start || !r.pausedAt) return;
+  setSingleton("running", { ...r, pausedMs: (r.pausedMs || 0) + (Date.now() - r.pausedAt), pausedAt: null });
+}
 // Die Eintrags-ID hängt am Startzeitpunkt: stoppen zwei Geräte denselben Lauf,
 // entsteht trotzdem nur ein Eintrag.
 function bookRun(r, end, min) {
@@ -185,25 +201,24 @@ function bookRun(r, end, min) {
 export function stopTimer(opts) {
   const r = store.state.running;
   if (!r || !r.start) return null;
-  const end = r.dur ? Math.min(Date.now(), r.start + r.dur * 1000) : Date.now();
-  const min = (end - r.start) / 60000;
-  const entry = min >= 0.25 ? bookRun(r, end, min) : null;
+  const ms = r.dur ? Math.min(elapsedMs(r), r.dur * 1000) : elapsedMs(r);
+  const min = ms / 60000;
+  const entry = min >= 0.25 ? bookRun(r, Date.now(), min) : null;
   setSingleton("running", { start: null }, opts);
   return { min, entry };
 }
 // Countdown abgelaufen: volle Dauer buchen und Timer beenden
 export function finishCountdown() {
   const r = store.state.running;
-  if (!r || !r.start || !r.dur) return null;
-  const end = r.start + r.dur * 1000;
-  if (Date.now() < end) return null;
+  const end = countdownEnd();
+  if (!end || Date.now() < end) return null;
   const entry = bookRun(r, end, r.dur / 60);
   setSingleton("running", { start: null });
   return { ...r, end, entry };
 }
 export const countdownEnd = () => {
   const r = store.state.running;
-  return r && r.start && r.dur ? r.start + r.dur * 1000 : null;
+  return r && r.start && r.dur && !r.pausedAt ? r.start + (r.pausedMs || 0) + r.dur * 1000 : null; // pausiert: kein Ende
 };
 export function addEntry({ vorhabenId, todoId = null, date, min, note = "" }) {
   if (!vorhabenId || !(min > 0)) return null;

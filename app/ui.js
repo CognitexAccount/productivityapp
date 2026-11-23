@@ -35,12 +35,14 @@ const ICONS = {
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
   play: '<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>',
+  pause: '<rect x="6.5" y="5.5" width="4" height="13" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.5" y="5.5" width="4" height="13" rx="1.2" fill="currentColor" stroke="none"/>',
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" stroke="none"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   open: '<path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   back: '<path d="M15 6l-6 6 6 6"/>',
+  next: '<path d="M9 6l6 6-6 6"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -89,8 +91,10 @@ export function modal({ title, body, actions = [], wide = false, onClose }) {
   back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
   document.body.append(back);
   document.addEventListener("keydown", onKey);
-  const first = box.querySelector("[autofocus], .modal-body input, .modal-body textarea, .modal-body [contenteditable]");
-  if (first) setTimeout(() => first.focus(), 30);
+  // Fokus nur, wo ausdrücklich gewünscht (autofocus) – und nicht, wenn schon im Dialog geklickt/getippt wurde.
+  // (Sonst klappt am Handy bei jedem Dialog die Tastatur auf.)
+  const first = box.querySelector("[autofocus]");
+  if (first) setTimeout(() => { if (!box.contains(document.activeElement)) first.focus(); }, 30);
   return close;
 }
 

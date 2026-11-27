@@ -4,7 +4,7 @@ import { h, icon, toast } from "./ui.js";
 import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, fmtClock, todayKey, diffDays } from "./model.js";
 import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify, unlockAudio } from "./alarm.js";
 import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, pauseTimer, resumeTimer, elapsedMs, remainingMs, countdownEnd, patch, removeItem, vName } from "./state.js";
-import { openDoneTime, openDueEdit } from "./timeentry.js";
+import { openDoneTime, openDueEdit, openTodoEdit } from "./timeentry.js";
 import { openVorhaben, persistUi } from "./nav.js";
 import { onlyHeadings } from "./editor.js";
 
@@ -145,7 +145,9 @@ export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
         onchange: (e) => { const val = e.target.value.trim(); if (val) patch("todos", t.id, { title: val }); },
         onkeydown: (e) => { if (e.key === "Enter") e.target.blur(); },
       })
-    : h("div", { class: "todo-title" }, t.title);
+    : h("div", { class: "todo-title editable", role: "button", tabindex: "0", title: "Aufgabe bearbeiten oder löschen",
+        onclick: () => openTodoEdit(t), onkeydown: (e) => { if (e.key === "Enter") openTodoEdit(t); } },
+        t.title, h("span", { class: "todo-edit-ic" }, icon("edit")));
   return h("div", { class: "todo" + (t.done ? " done" : "") + (isRunning(t.id) ? " running" : "") },
     h("label", { class: "chk" },
       h("input", { type: "checkbox", checked: !!t.done, "aria-label": "Erledigt", onchange: (e) => (e.target.checked ? completeTodo(t) : toggleTodo(t.id, false)) }),

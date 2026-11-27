@@ -639,3 +639,11 @@ details.hints li.hint-head:first-child { margin-top: 2px; }
 .due-btn.none { color: var(--muted); opacity: .55; padding: 2px 4px; display: inline-grid; place-items: center; }
 .due-btn.none:hover { opacity: 1; }
 .due-btn .ic { width: 15px; height: 15px; }
+.todo-title.editable { cursor: pointer; border-radius: 4px; }
+.todo-title.editable:hover { background: var(--soft); }
+.todo-edit-ic { display: inline-block; vertical-align: -2px; margin-left: 5px; color: var(--muted); opacity: .45; }
+.todo-edit-ic .ic { width: 13px; height: 13px; }
+.todo-title.editable:hover .todo-edit-ic { opacity: 1; }
+.todo-edit-title { resize: vertical; min-height: 52px; }
+.modal-foot .btn.danger:first-child { margin-right: auto; background: none; color: var(--danger); border-color: var(--line); }
+.form-grid .f textarea.txt { color: var(--ink); font-weight: 400; font-size: 15px; }

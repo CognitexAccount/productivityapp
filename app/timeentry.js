@@ -1,9 +1,10 @@
 // Zeit erfassen ohne Timer: „Zeit nachtragen“ (von überall) und die Frage nach
 // der Dauer beim Abhaken eines To-Dos, das nicht über den Timer lief.
 
-import { h, modal, toast } from "./ui.js";
-import { todayKey, fmtHM, fmtShort, addDays, parseKey, DEFAULT_EST } from "./model.js";
-import { live, byId, patch, addEntry, sortTodos, toggleTodo, minutesTodo, assignableProjects, vName, notify } from "./state.js";
+import { h, modal, toast, confirmDialog, isMobile } from "./ui.js";
+import { todayKey, fmtHM, fmtShort, addDays, parseKey, DEFAULT_EST, EST_OPTIONS } from "./model.js";
+import { store, live, byId, patch, removeItem, addEntry, sortTodos, toggleTodo, minutesTodo, assignableProjects, vName, notify, stopTimer } from "./state.js";
+import { cancelAlarm } from "./alarm.js";
 import { ui } from "./nav.js";
 
 function durationInputs(preset) {
@@ -120,5 +121,53 @@ export function openDueEdit(t) {
       t.due ? { label: "Ohne Datum", onClick: (c) => set(c, "") } : null,
       { label: "Übernehmen", primary: true, onClick: (c) => set(c, date.value || "") },
     ].filter(Boolean),
+  });
+}
+
+// Aufgabe bearbeiten (Titel, Projekt, Fälligkeit, Zeitangabe) oder löschen
+export function openTodoEdit(t) {
+  const vs = assignableProjects();
+  const cur = byId("vorhaben", t.vorhabenId);
+  if (cur && !vs.some((v) => v.id === cur.id)) vs.unshift(cur); // z. B. abgeschlossenes Projekt
+  const title = h("textarea", { class: "txt todo-edit-title", rows: Math.min(5, Math.max(2, Math.ceil((t.title || "").length / 38))), "aria-label": "Titel", autofocus: !isMobile() });
+  title.value = t.title || "";
+  const vSel = h("select", { class: "sel", "aria-label": "Projekt", value: t.vorhabenId }, vs.map((v) => h("option", { value: v.id }, vName(v))));
+  const due = h("input", { type: "date", class: "date-in", value: t.due || "", "aria-label": "Fällig am" });
+  const est = h("select", { class: "sel", "aria-label": "Zeitangabe", value: String(t.est || DEFAULT_EST) },
+    Array.from(new Set([...EST_OPTIONS, t.est || DEFAULT_EST])).sort((a, b) => a - b).map((m) => h("option", { value: String(m) }, m + " Min")));
+  const booked = minutesTodo(t.id);
+  const save = (close) => {
+    const val = title.value.replace(/\s+/g, " ").trim();
+    if (!val) { title.focus(); toast("Der Titel darf nicht leer sein."); return; }
+    if (!byId("todos", t.id)) { close(); return; }
+    patch("todos", t.id, { title: val, vorhabenId: vSel.value, due: due.value || "", est: parseInt(est.value, 10) || DEFAULT_EST });
+    close();
+    toast("Aufgabe gespeichert");
+  };
+  const del = async (close) => {
+    close();
+    const ok = await confirmDialog("Aufgabe „" + (t.title || "").slice(0, 80) + "“ löschen?" + (booked >= 1 ? " Die erfasste Zeit (" + fmtHM(booked) + " h) bleibt beim Projekt erhalten." : ""), { ok: "Löschen", danger: true });
+    if (!ok) return;
+    const r = store.state.running;
+    if (r && r.start && r.todoId === t.id) { cancelAlarm(); stopTimer(); }
+    removeItem("todos", t.id);
+    toast("Aufgabe gelöscht");
+  };
+  let close;
+  title.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(close); } });
+  close = modal({
+    title: "Aufgabe bearbeiten",
+    body: h("div", { class: "form-grid" },
+      h("label", { class: "f" }, h("span", null, "Titel"), title),
+      h("label", { class: "f" }, h("span", null, "Projekt"), vSel),
+      h("div", { class: "f-row" },
+        h("label", { class: "f" }, h("span", null, "Fällig am"), due),
+        h("label", { class: "f" }, h("span", null, "Zeitangabe"), est)),
+      booked >= 1 ? h("p", { class: "muted small" }, "Erfasste Zeit: " + fmtHM(booked) + " h") : null),
+    actions: [
+      { label: "Löschen", danger: true, onClick: del },
+      { label: "Abbrechen", onClick: (c) => c() },
+      { label: "Speichern", primary: true, onClick: save },
+    ],
   });
 }

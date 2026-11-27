@@ -634,3 +634,8 @@ details.hints li.hint-head:first-child { margin-top: 2px; }
 .chip.st-chip.st-0 { color: var(--s0); } .chip.st-chip.st-1 { color: var(--s1); } .chip.st-chip.st-2 { color: var(--s2); }
 .chip.st-chip.st-3 { color: var(--s3); } .chip.st-chip.st-4 { color: var(--s4); }
 .done-what { font-weight: 650; margin: 0 0 10px; }
+.due-btn { border: 1px solid transparent; background: none; padding: 2px 6px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.due-btn:hover { border-color: var(--line); background: var(--soft); }
+.due-btn.none { color: var(--muted); opacity: .55; padding: 2px 4px; display: inline-grid; place-items: center; }
+.due-btn.none:hover { opacity: 1; }
+.due-btn .ic { width: 15px; height: 15px; }

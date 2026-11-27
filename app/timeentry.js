@@ -2,8 +2,8 @@
 // der Dauer beim Abhaken eines To-Dos, das nicht über den Timer lief.
 
 import { h, modal, toast } from "./ui.js";
-import { todayKey, fmtHM, DEFAULT_EST } from "./model.js";
-import { live, addEntry, sortTodos, toggleTodo, assignableProjects, vName, notify } from "./state.js";
+import { todayKey, fmtHM, fmtShort, addDays, parseKey, DEFAULT_EST } from "./model.js";
+import { live, byId, patch, addEntry, sortTodos, toggleTodo, minutesTodo, assignableProjects, vName, notify } from "./state.js";
 import { ui } from "./nav.js";
 
 function durationInputs(preset) {
@@ -62,13 +62,14 @@ export function openTimeEntry(preVid) {
 
 // Beim Abhaken ohne vorherigen Timer: kurz die tatsächliche Dauer erfragen
 export function openDoneTime(t) {
-  const d = durationInputs(t.est || DEFAULT_EST);
+  const booked = minutesTodo(t.id);
+  const d = durationInputs(booked >= 1 ? 0 : t.est || DEFAULT_EST);
   let decided = false;
   const finish = (close, withTime) => {
     decided = true;
-    if (withTime) {
-      const min = d.read();
-      if (min <= 0) { toast("Bitte eine Dauer angeben – oder „Ohne Zeit abhaken“."); decided = false; return; }
+    const min = withTime ? d.read() : 0;
+    if (withTime && min <= 0 && booked < 1) { toast("Bitte eine Dauer angeben – oder „Ohne Zeit abhaken“."); decided = false; return; }
+    if (min > 0) {
       addEntry({ vorhabenId: t.vorhabenId, todoId: t.id, date: todayKey(), min });
       toast("Erledigt – " + fmtHM(min) + " h gebucht");
     } else toast("Erledigt");
@@ -76,17 +77,48 @@ export function openDoneTime(t) {
     close();
   };
   modal({
-    title: "Wie lange hat das gedauert?",
+    title: booked >= 1 ? "Noch Zeit dazubuchen?" : "Wie lange hat das gedauert?",
     body: h("div", { class: "form-grid" },
       h("p", { class: "done-what" }, t.title),
+      booked >= 1 ? h("p", { class: "muted small" }, "Bisher erfasst: " + fmtHM(booked) + " h. Trag hier nur die zusätzliche Zeit ein – oder hake ohne weitere Zeit ab.") : null,
       d.chips,
       h("div", { class: "f-row" },
         h("label", { class: "f" }, h("span", null, "Stunden"), d.hh),
         h("label", { class: "f" }, h("span", null, "Minuten"), d.mm))),
     actions: [
-      { label: "Ohne Zeit abhaken", onClick: (c) => finish(c, false) },
+      { label: booked >= 1 ? "Ohne weitere Zeit abhaken" : "Ohne Zeit abhaken", onClick: (c) => finish(c, false) },
       { label: "Abhaken & buchen", primary: true, onClick: (c) => finish(c, true) },
     ],
     onClose: () => { if (!decided) notify(); }, // abgebrochen → Häkchen zurücksetzen
+  });
+}
+
+// Fälligkeit eines To-Dos ändern (z. B. wenn es überfällig ist)
+export function openDueEdit(t) {
+  const tk = todayKey();
+  const wd = parseKey(tk).getDay(); // 0 = So
+  const monday = addDays(tk, ((8 - wd) % 7) || 7);
+  const set = (close, due) => {
+    const cur = byId("todos", t.id);
+    if (!cur) { close(); return; }
+    patch("todos", t.id, { due });
+    close();
+    toast(due ? "Fällig am " + fmtShort(due) : "Fälligkeit entfernt");
+  };
+  const date = h("input", { type: "date", class: "date-in", value: t.due || tk, "aria-label": "Fällig am" });
+  let close;
+  const quick = [["Heute", tk], ["Morgen", addDays(tk, 1)], ["Übermorgen", addDays(tk, 2)], ["Nächster Montag", monday], ["In 1 Woche", addDays(tk, 7)]];
+  close = modal({
+    title: "Fällig am …",
+    body: h("div", { class: "form-grid" },
+      h("p", { class: "done-what" }, t.title),
+      t.due ? h("p", { class: "muted small" }, "Bisher: " + fmtShort(t.due) + (t.due < tk ? " (überfällig)" : "")) : null,
+      h("div", { class: "row-wrap due-quick" }, quick.map(([lbl, k]) =>
+        h("button", { type: "button", class: "chip" + (t.due === k ? " on" : ""), onclick: () => set(close, k) }, lbl + " · " + fmtShort(k)))),
+      h("label", { class: "inline-field" }, "Anderes Datum", date)),
+    actions: [
+      t.due ? { label: "Ohne Datum", onClick: (c) => set(c, "") } : null,
+      { label: "Übernehmen", primary: true, onClick: (c) => set(c, date.value || "") },
+    ].filter(Boolean),
   });
 }

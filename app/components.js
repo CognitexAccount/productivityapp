@@ -4,7 +4,7 @@ import { h, icon, toast } from "./ui.js";
 import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, fmtClock, todayKey, diffDays } from "./model.js";
 import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify, unlockAudio } from "./alarm.js";
 import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, pauseTimer, resumeTimer, elapsedMs, remainingMs, countdownEnd, patch, removeItem, vName } from "./state.js";
-import { openDoneTime } from "./timeentry.js";
+import { openDoneTime, openDueEdit } from "./timeentry.js";
 import { openVorhaben, persistUi } from "./nav.js";
 import { onlyHeadings } from "./editor.js";
 
@@ -128,12 +128,11 @@ export function estSelect(value, onchange, attrs) {
     EST_OPTIONS.map((m) => h("option", { value: String(m) }, m + " Min")));
 }
 
-// Abhaken: läuft der Timer daran, wird er gestoppt und gebucht; wurde noch keine
-// Zeit erfasst, fragt ein kurzes Feld nach der Dauer.
+// Abhaken: läuft (oder pausiert) der Timer daran, wird er gestoppt und gebucht;
+// sonst fragt ein kurzes Feld nach der (zusätzlichen) Dauer.
 export function completeTodo(t) {
   if (isRunning(t.id)) { stopTimerUI(); toggleTodo(t.id, true); return; }
-  if (minutesTodo(t.id) < 1) { openDoneTime(t); return; }
-  toggleTodo(t.id, true);
+  openDoneTime(t);
 }
 
 export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
@@ -156,7 +155,9 @@ export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
       showVorhaben && v ? (v.system ? h("span", { class: "todo-v" }, vName(v)) : h("a", { class: "todo-v", href: "#/v/" + v.id }, vName(v))) : null),
     editable
       ? h("input", { type: "date", class: "date-in small", value: t.due || "", "aria-label": "Fällig", onchange: (e) => patch("todos", t.id, { due: e.target.value }) })
-      : t.due ? h("span", { class: "due " + dueClass(t.due, t.done) }, fmtShort(t.due)) : null,
+      : t.done ? (t.due ? h("span", { class: "due" }, fmtShort(t.due)) : null)
+      : t.due ? h("button", { class: "due due-btn " + dueClass(t.due, t.done), title: "Fälligkeit ändern", "aria-label": "Fällig " + fmtShort(t.due) + " – ändern", onclick: () => openDueEdit(t) }, fmtShort(t.due))
+      : h("button", { class: "due due-btn none", title: "Fälligkeitsdatum setzen", "aria-label": "Fälligkeitsdatum setzen", onclick: () => openDueEdit(t) }, icon("calendar")),
     min >= 1 ? h("span", { class: "todo-min", title: "Erfasste Zeit" }, fmtHM(min)) : null,
     progress > 0 ? h("span", { class: "todo-progress", title: "Angefangen – der Countdown läuft beim nächsten Start hier weiter" },
       "noch " + fmtClock(Math.ceil(((t.est || DEFAULT_EST) * 60000 - progress) / 1000))) : null,

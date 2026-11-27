@@ -5,11 +5,13 @@ import { STATUS_LABEL, FIELD, todayKey, fmtClock, fmtShort, fmtHM } from "./mode
 import {
   store, subscribe, loadCache, initSync, ensureDefaultAreas, byId, live, areas, patch, settings,
   overdueVorhaben, onPinRequired, finishCountdown, countdownEnd, toggleTodo, setField, notify as notifyState,
+  projects, vName, ensureSonstiges, setSingleton,
 } from "./state.js";
 import { ui, setRender, go, persistUi } from "./nav.js";
 import { setStatusChanger, timerButton, startTimerUI, pauseButton, runText, runClock, runPct } from "./components.js";
 import { onlyHeadings } from "./editor.js";
-import { ALARM_SEC, scheduleAlarm, cancelAlarm, isScheduled, syncAlarm, vibrate, notify } from "./alarm.js";
+import { ALARM_SEC, scheduleAlarm, cancelAlarm, isScheduled, syncAlarm, vibrate, notify, ringNow } from "./alarm.js";
+import { defaultHints } from "./fields.js";
 import { openTimeEntry } from "./timeentry.js";
 import { openCapture } from "./capture.js";
 import { openSettings, pinPrompt } from "./settings.js";
@@ -24,7 +26,7 @@ import { lessonsView } from "./views/lessons.js";
 import { strategyView } from "./views/strategy.js";
 
 const NAV = [
-  { r: "heute", label: "Heute", ic: "today" },
+  { r: "heute", label: "To-Do", ic: "today" },
   { r: "tabelle", label: "Tabelle", ic: "table" },
   { r: "board", label: "Board", ic: "board" },
   { r: "zeitleiste", label: "Zeitleiste", ic: "timeline" },
@@ -52,11 +54,7 @@ setStatusChanger(async (vid, status) => {
   const promoted = v.status === "Idee" && status !== "Idee";
   if (promoted && !v.start && (status === "Vorbereitung" || status === "Läuft")) changes.start = todayKey();
   patch("vorhaben", vid, changes);
-  if (promoted) toast("Zum Vorhaben befördert");
-  if (status === "Läuft") {
-    const n = live("vorhaben").filter((x) => x.status === "Läuft").length, wip = settings().wipLimit || 3;
-    if (n > wip) toast("Achtung: " + n + " Vorhaben laufen parallel (WIP-Grenze " + wip + ")");
-  }
+  if (promoted) toast("Aus dem Ideen-Park übernommen");
 });
 onPinRequired(pinPrompt);
 
@@ -105,11 +103,18 @@ function runbar() {
   const r = store.state.running;
   if (!r || !r.start) return null;
   const v = byId("vorhaben", r.vorhabenId), t = r.todoId ? byId("todos", r.todoId) : null;
-  return h("div", { class: "runbar" + (r.dur ? " countdown" : "") + (r.pausedAt ? " paused" : "") },
+  // Klick auf die Leiste (außer auf Buttons/Links) führt zum Timer in der To-Do-Ansicht
+  const toTimer = (e) => {
+    if (e.target.closest("button, a")) return;
+    if (ui.route === "heute") { const el = document.getElementById("timer"); if (el) el.scrollIntoView({ block: "start" }); return; }
+    go("#/heute");
+  };
+  return h("div", { class: "runbar" + (r.dur ? " countdown" : "") + (r.pausedAt ? " paused" : ""), title: "Zum Timer", role: "link", tabindex: "0",
+    onclick: toTimer, onkeydown: (e) => { if (e.key === "Enter") toTimer(e); } },
     h("span", { class: "pulse" }),
     h("div", { class: "run-info" },
-      h("div", { class: "run-what clamp1" }, t ? t.title : "Stoppuhr am Vorhaben"),
-      v ? h("a", { class: "run-v clamp1", href: "#/v/" + v.id }, v.title) : null),
+      h("div", { class: "run-what clamp1" }, t ? t.title : "Stoppuhr am Projekt"),
+      v ? h("a", { class: "run-v clamp1", href: v.system ? "#/heute" : "#/v/" + v.id }, vName(v)) : null),
     h("span", { class: "run-time num", id: "runTime" }, runText(r)),
     pauseButton(),
     timerButton({ todoId: r.todoId, vorhabenId: r.vorhabenId, label: "Stopp" }),
@@ -121,23 +126,32 @@ let alarmClose = null;
 function showAlarm(info) {
   const t = info.todoId ? byId("todos", info.todoId) : null;
   const v = byId("vorhaben", info.vorhabenId);
-  const what = t ? t.title : (v && v.title) || "Countdown";
-  if (!isScheduled() || Date.now() > info.end + 5000) scheduleAlarm(Date.now()); // z. B. nach Neuladen
+  const what = t ? t.title : v ? vName(v) : "Countdown";
+  const min = info.entry ? info.entry.min : (info.dur * 1000 - (info.offsetMs || 0)) / 60000;
+  if (alarmClose) alarmClose(); // (sagt auch einen laufenden Ton ab – deshalb vor dem neuen Ton)
+  // Seite sichtbar: Ton sofort über das Audio-Element (klingt auch bei iPhone-Stummschalter);
+  // im Hintergrund klingelt der vorab geplante WebAudio-Ton.
+  if (document.visibilityState === "visible") ringNow();
+  else if (!isScheduled() || Date.now() > info.end + 5000) scheduleAlarm(Date.now());
   vibrate();
-  notify("⏰ Zeit ist um", what + " – " + fmtHM(info.dur / 60) + " h gebucht");
-  if (alarmClose) alarmClose();
-  const stopAll = () => { cancelAlarm(); };
+  notify("⏰ Zeit ist um", what + (v && t ? " (" + vName(v) + ")" : "") + " – " + fmtHM(min) + " h gebucht");
   alarmClose = modal({
     title: "⏰ Zeit ist um",
     body: h("div", { class: "alarm" },
       h("div", { class: "alarm-icon" }, icon("bell")),
       h("div", { class: "alarm-what" }, what),
-      v && t ? h("div", { class: "muted small" }, v.title) : null,
-      h("p", { class: "muted small" }, fmtHM(info.dur / 60) + " h wurden gebucht. Der Signalton läuft bis zu " + Math.round(ALARM_SEC / 60) + " Minuten, wenn du ihn nicht ausstellst.")),
+      v && t ? h("div", { class: "muted small" }, vName(v)) : null,
+      h("p", { class: "muted small" }, fmtHM(min) + " h wurden gebucht. Der Signalton läuft bis zu " + Math.round(ALARM_SEC / 60) + " Minuten, wenn du ihn nicht ausstellst.")),
     actions: [
-      { label: "+5 Min", onClick: (c) => { stopAll(); c(); startTimerUI({ vorhabenId: info.vorhabenId, todoId: info.todoId, dur: 5 * 60 }); } },
-      t && !t.done ? { label: "Erledigt ✓", onClick: (c) => { stopAll(); c(); toggleTodo(t.id, true); toast("To-Do erledigt"); } } : null,
-      { label: "Alarm aus", primary: true, onClick: (c) => { stopAll(); c(); } },
+      { label: "+5 Min", onClick: (c) => { c(); startTimerUI({ vorhabenId: info.vorhabenId, todoId: info.todoId, dur: 5 * 60 }); } },
+      t && !t.done ? { label: "Erledigt ✓", onClick: (c) => {
+        c();
+        const cur = byId("todos", t.id);
+        if (cur && !cur.done) toggleTodo(t.id, true);
+        render();
+        toast("To-Do erledigt");
+      } } : null,
+      { label: "Alarm aus", primary: true, onClick: (c) => c() },
     ].filter(Boolean),
     onClose: () => { cancelAlarm(); alarmClose = null; },
   });
@@ -153,11 +167,11 @@ function checkCountdown() {
 
 function banner() {
   if (!["heute", "board", "tabelle", "zeitleiste"].includes(ui.route)) return null;
-  const over = overdueVorhaben().filter((v) => ui.area === "all" || v.areaId === ui.area);
+  const over = overdueVorhaben().filter((v) => !v.system && (ui.area === "all" || v.areaId === ui.area));
   if (!over.length) return null;
   return h("div", { class: "banner" }, icon("warn"),
     h("span", null, h("strong", null, "Fristwächter: "), over.length === 1 ? "1 Vorhaben ist über seiner Laufzeit – " : over.length + " Vorhaben sind über ihrer Laufzeit – ",
-      over.map((v, i) => [i ? ", " : "", h("a", { href: "#/v/" + v.id }, (v.title || "Ohne Titel").slice(0, 48) + ((v.title || "").length > 48 ? "…" : "")), " (bis " + fmtShort(v.end) + ")"])),
+      over.map((v, i) => [i ? ", " : "", h("a", { href: "#/v/" + v.id }, vName(v)), " (bis " + fmtShort(v.end) + ")"])),
     h("span", { class: "muted small" }, "Verlängern, abschließen oder bewusst beenden?"));
 }
 
@@ -225,7 +239,7 @@ function render() {
   refreshTableArrows();
   centerActiveChip(root);
   window.scrollTo(0, y);
-  document.title = (ui.route === "v" && byId("vorhaben", ui.param) ? (byId("vorhaben", ui.param).title || "Vorhaben").slice(0, 40) + " · " : viewTitle() ? viewTitle() + " · " : "") + "Projektsystem";
+  document.title = (ui.route === "v" && byId("vorhaben", ui.param) ? vName(byId("vorhaben", ui.param)).slice(0, 40) + " · " : viewTitle() ? viewTitle() + " · " : "") + "Projektsystem";
   if (ui.focusAfter) {
     const el = root.querySelector('[data-focus-key="' + ui.focusAfter + '"]');
     ui.focusAfter = null;
@@ -292,6 +306,17 @@ function cleanupOutlines() {
     setField(v.id, "abschluss", parts.join(""));
     n++;
   });
+  // Früherer Einstellungs-Text „Resistance …“ → Teil der Leitfragen zu „Ergebnis“
+  const s = settings();
+  if (s.resistanceText) {
+    const hints = { ...(s.hints || {}) };
+    const base = Array.isArray(hints.ergebnis) && hints.ergebnis.length ? hints.ergebnis : defaultHints("ergebnis");
+    const lines = s.resistanceText.split(/\n+/).map((x) => x.trim()).filter(Boolean);
+    if (lines.length && !base.some((q) => q.includes(lines[0].slice(0, 40)))) hints.ergebnis = [...base, ...lines];
+    const { resistanceText, ...rest } = s;
+    setSingleton("settings", { ...rest, hints }, { silent: true });
+    n++;
+  }
   if (n) notifyState();
 }
 
@@ -299,7 +324,12 @@ function cleanupOutlines() {
 loadCache();
 parseRoute();
 render();
-initSync().then(() => { ensureDefaultAreas(); cleanupOutlines(); checkCountdown(); });
+initSync().then(() => { ensureDefaultAreas(); ensureSonstiges(); cleanupOutlines(); checkCountdown(); notifyState(); });
+
+// Service Worker: nötig für Benachrichtigungen auf Android und als Home-Bildschirm-App
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
+}
 
 // Tastenkürzel: "i" = Idee parken (außerhalb von Eingabefeldern)
 document.addEventListener("keydown", (e) => {

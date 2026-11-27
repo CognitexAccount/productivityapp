@@ -75,10 +75,34 @@ export function notify() { emit("local"); }
 /* ── Lesen ── */
 export const live = (coll) => store.state[coll].filter((x) => !x.del);
 export const byId = (coll, id) => store.state[coll].find((x) => x.id === id && !x.del) || null;
-export const settings = () => store.state.settings || { wipLimit: 3 };
+export const settings = () => store.state.settings || {};
 export const areas = () => live("areas").sort((a, b) => (a.order || 0) - (b.order || 0));
 export const areaName = (id) => (byId("areas", id) || { name: "Ohne Bereich" }).name;
 export const isActive = (v) => ACTIVE.includes(v.status);
+
+// „Sonstiges“: festes Sammel-Projekt für To-Dos ohne eigenes Vorhaben (taucht nicht in Board/Tabelle/Zeitleiste auf)
+export const SONSTIGES_ID = "v_sonstiges";
+export const projects = () => live("vorhaben").filter((v) => !v.system);
+// Projektname (kurz); ohne Namen: gekürzte Hypothese
+export function vName(v) {
+  if (!v) return "(gelöscht)";
+  const n = (v.name || "").trim();
+  if (n) return n;
+  if (v.system) return "Sonstiges";
+  const t = (v.title || "Ohne Titel").trim();
+  return t.length > 48 ? t.slice(0, 46).trim() + " …" : t;
+}
+export function ensureSonstiges() {
+  if (store.state.vorhaben.some((v) => v.id === SONSTIGES_ID)) return;
+  upsert("vorhaben", { id: SONSTIGES_ID, system: true, name: "Sonstiges", title: "Sonstiges", status: "Läuft", areaId: null, fields: {}, erfolg: {}, created: 0 }, { silent: true });
+}
+// Auswahlliste für die Zuordnung von To-Dos/Zeiten: aktive Projekte zuerst, „Sonstiges“ immer am Ende
+export function assignableProjects() {
+  const list = projects().filter((v) => v.status !== "Abgeschlossen")
+    .sort((a, b) => (isActive(b) ? 1 : 0) - (isActive(a) ? 1 : 0) || vName(a).localeCompare(vName(b), "de"));
+  const s = byId("vorhaben", SONSTIGES_ID);
+  return s ? [...list, s] : list;
+}
 
 function todoSort(a, b) {
   if (!!a.done !== !!b.done) return a.done ? 1 : -1;
@@ -144,9 +168,9 @@ export function lastActivity(vid) {
 }
 
 /* ── Aktionen ── */
-export function createVorhaben({ areaId, status = "Idee", title = "", gruppe = "", fields = {} }) {
+export function createVorhaben({ areaId, status = "Idee", title = "", name = "", fields = {} }) {
   return upsert("vorhaben", {
-    id: uid(), areaId, status, title, gruppe, start: "", end: "", weeklyTargetH: null,
+    id: uid(), areaId, status, title, name, start: "", end: "",
     goalIds: [], fields, erfolg: {}, abschluss: {}, created: Date.now(),
   });
 }
@@ -171,15 +195,25 @@ export function addTodo(vorhabenId, title, due, est) {
   return upsert("todos", { id: uid(), vorhabenId, title, due: due || "", est: est || DEFAULT_EST, done: false, created: Date.now() });
 }
 export function toggleTodo(id, done) {
-  patch("todos", id, { done, doneAt: done ? Date.now() : null });
+  patch("todos", id, done ? { done, doneAt: Date.now(), progressMs: 0 } : { done, doneAt: null });
 }
 
-// dur = Countdown-Dauer in Sekunden (To-Do), null = offene Stoppuhr (Vorhaben)
+// dur = Countdown-Dauer in Sekunden (To-Do), null = offene Stoppuhr (Vorhaben).
+// Läuft schon ein Timer, wird er angehalten: Zeit gebucht, Stand am To-Do gemerkt.
+// Ein To-Do mit gemerktem Stand setzt seinen Countdown dort fort.
 export function startTimer({ vorhabenId, todoId = null, dur = null }) {
   const r = store.state.running;
   if (r && r.start) stopTimer({ silent: true });
-  setSingleton("running", { start: Date.now(), vorhabenId, todoId, dur: dur || null });
+  let offsetMs = 0;
+  if (dur && todoId) {
+    const t = byId("todos", todoId);
+    const p = (t && t.progressMs) || 0;
+    if (p > 0 && p < dur * 1000 - 1000) offsetMs = p;
+  }
+  setSingleton("running", { start: Date.now(), vorhabenId, todoId, dur: dur || null, offsetMs });
 }
+// Restzeit eines Countdowns in ms (berücksichtigt gemerkten Stand und Pausen)
+export const remainingMs = (r) => (r && r.dur ? r.dur * 1000 - (r.offsetMs || 0) - elapsedMs(r) : 0);
 export function pauseTimer() {
   const r = store.state.running;
   if (!r || !r.start || r.pausedAt) return;
@@ -201,9 +235,14 @@ function bookRun(r, end, min) {
 export function stopTimer(opts) {
   const r = store.state.running;
   if (!r || !r.start) return null;
-  const ms = r.dur ? Math.min(elapsedMs(r), r.dur * 1000) : elapsedMs(r);
+  const ms = r.dur ? Math.min(elapsedMs(r), r.dur * 1000 - (r.offsetMs || 0)) : elapsedMs(r);
   const min = ms / 60000;
   const entry = min >= 0.25 ? bookRun(r, Date.now(), min) : null;
+  // Stand am To-Do merken, damit der Countdown später dort weiterläuft
+  if (r.dur && r.todoId && byId("todos", r.todoId)) {
+    const p = (r.offsetMs || 0) + ms;
+    patch("todos", r.todoId, { progressMs: p >= r.dur * 1000 - 1000 ? 0 : p }, { silent: true });
+  }
   setSingleton("running", { start: null }, opts);
   return { min, entry };
 }
@@ -212,13 +251,14 @@ export function finishCountdown() {
   const r = store.state.running;
   const end = countdownEnd();
   if (!end || Date.now() < end) return null;
-  const entry = bookRun(r, end, r.dur / 60);
+  const entry = bookRun(r, end, (r.dur * 1000 - (r.offsetMs || 0)) / 60000);
+  if (r.todoId && byId("todos", r.todoId)) patch("todos", r.todoId, { progressMs: 0 }, { silent: true });
   setSingleton("running", { start: null });
   return { ...r, end, entry };
 }
 export const countdownEnd = () => {
   const r = store.state.running;
-  return r && r.start && r.dur && !r.pausedAt ? r.start + (r.pausedMs || 0) + r.dur * 1000 : null; // pausiert: kein Ende
+  return r && r.start && r.dur && !r.pausedAt ? r.start + (r.pausedMs || 0) + r.dur * 1000 - (r.offsetMs || 0) : null; // pausiert: kein Ende
 };
 export function addEntry({ vorhabenId, todoId = null, date, min, note = "" }) {
   if (!vorhabenId || !(min > 0)) return null;

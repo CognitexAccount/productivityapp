@@ -2,7 +2,7 @@
 
 import { h, icon } from "../ui.js";
 import { FIELDS, ERFOLG_PARTS } from "../model.js";
-import { live, areas, patch, minutesOf, todosOf, createVorhaben } from "../state.js";
+import { projects, areas, patch, minutesOf, todosOf, createVorhaben } from "../state.js";
 import { ui, openPanel, openVorhaben, rerender, persistUi } from "../nav.js";
 import { statusSelect, deadlineBadge, preview, statusClass } from "../components.js";
 import { fmtH } from "../model.js";
@@ -37,13 +37,16 @@ function row(v) {
   const open = todosOf(v.id).filter((t) => !t.done).length;
   const min = minutesOf(v.id);
   const titleActive = ui.panel && ui.panel.vid === v.id && ui.panel.field === "titel";
+  const nameActive = ui.panel && ui.panel.vid === v.id && ui.panel.field === "name";
   return h("tr", { class: "row " + statusClass(v.status) + (v.status === "Abgeschlossen" ? " is-done" : "") },
-    h("td", { class: "c-title sticky" + (titleActive ? " active" : ""), onclick: () => openPanel(v.id, "titel") },
-      h("div", { class: "clamp3 title-text" }, v.title || h("span", { class: "muted" }, "Ohne Titel")),
+    h("td", { class: "c-name sticky" + (nameActive ? " active" : ""), onclick: () => openPanel(v.id, "name") },
+      h("div", { class: "clamp3 name-text" }, (v.name || "").trim() || h("span", { class: "muted" }, "Name vergeben …")),
       h("div", { class: "title-meta" },
         deadlineBadge(v),
         h("button", { class: "icon-btn ghost tiny", title: "Als Dokument öffnen", "aria-label": "Als Dokument öffnen",
           onclick: (e) => { e.stopPropagation(); openVorhaben(v.id); } }, icon("open")))),
+    h("td", { class: "c-title" + (titleActive ? " active" : ""), tabindex: "0", onclick: () => openPanel(v.id, "titel") },
+      h("div", { class: "clamp3" }, v.title || h("span", { class: "muted" }, "—"))),
     h("td", { class: "c-status" }, statusSelect(v, "small")),
     v.status === "Idee"
       ? h("td", { class: "c-dates" }, h("span", { class: "muted" }, "—"))
@@ -79,13 +82,13 @@ function scroller(table) {
 }
 
 export function tableView() {
-  const ncol = 3 + COLS.length + 2;
+  const ncol = 4 + COLS.length + 2;
   const tbody = h("tbody");
   const shown = areas().filter((a) => ui.area === "all" || a.id === ui.area);
   let any = false;
 
   shown.forEach((a) => {
-    const all = live("vorhaben").filter((v) => v.areaId === a.id);
+    const all = projects().filter((v) => v.areaId === a.id);
     const hiddenDone = ui.showDone ? 0 : all.filter((v) => v.status === "Abgeschlossen").length;
     const main = all.filter((v) => v.status !== "Idee" && (ui.showDone || v.status !== "Abgeschlossen")).sort(byStartThenCreated);
     const ideas = all.filter((v) => v.status === "Idee").sort((x, y) => (x.created || 0) - (y.created || 0));
@@ -98,18 +101,7 @@ export function tableView() {
           h("button", { class: "btn small", onclick: () => { const v = createVorhaben({ areaId: a.id, status: "Vorbereitung" }); openVorhaben(v.id); } },
             icon("plus"), "Vorhaben")))));
 
-    const groups = [];
-    main.forEach((v) => {
-      const g = v.gruppe || "";
-      let grp = groups.find((x) => x.name === g);
-      if (!grp) { grp = { name: g, items: [] }; groups.push(grp); }
-      grp.items.push(v);
-    });
-    groups.sort((x, y) => (x.name === "" ? -1 : y.name === "" ? 1 : 0));
-    groups.forEach((g) => {
-      if (g.name) tbody.append(h("tr", { class: "group-row" }, h("td", { colspan: ncol }, h("span", { class: "stick" }, g.name))));
-      g.items.forEach((v) => { tbody.append(row(v)); any = true; });
-    });
+    main.forEach((v) => { tbody.append(row(v)); any = true; });
     if (hiddenDone) {
       tbody.append(h("tr", { class: "hint-row" }, h("td", { colspan: ncol },
         h("button", { class: "link-btn stick", onclick: () => { ui.showDone = true; persistUi(); rerender(); } },
@@ -123,7 +115,8 @@ export function tableView() {
 
   const table = h("table", { class: "grid" },
     h("thead", null, h("tr", null,
-      h("th", { class: "sticky" }, "Vorhaben / Hypothese"),
+      h("th", { class: "sticky" }, "Projektname"),
+      h("th", null, "Hypothese"),
       h("th", null, "Status"),
       h("th", null, "Laufzeit"),
       COLS.map((k) => h("th", null, LABEL[k])),

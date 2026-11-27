@@ -1,9 +1,10 @@
-// Einstellungen: WIP-Grenze, Bereiche, Zeittracker-Import, Backup, PIN.
+// Einstellungen: Benachrichtigungen, Leitfragen, Bereiche, Zeittracker-Import, Backup, PIN.
 
 import { h, icon, modal, toast, confirmDialog } from "./ui.js";
 import { todayKey, fmtH } from "./model.js";
-import { store, live, areas, settings, setSingleton, upsert, patch, removeItem, uid, importState, setPin, notify } from "./state.js";
+import { store, live, areas, settings, setSingleton, upsert, patch, removeItem, uid, importState, setPin, notify, assignableProjects, vName } from "./state.js";
 import { HINT_FIELDS, hintsFor, defaultHints } from "./fields.js";
+import { notifyState, requestNotify, notify as sysNotify, ensureAudio, unlockAudio, ringNow, cancelAlarm } from "./alarm.js";
 import { downloadCsv } from "./export.js";
 
 /* ── Daten aus dem alten Zeittracker (über /api/data weiterhin lesbar) ── */
@@ -28,7 +29,7 @@ async function trackerData() {
 
 function guess(name, vs) {
   const n = (name || "").toLowerCase();
-  const hit = vs.find((v) => (v.title || "").toLowerCase().includes(n) || (v.gruppe || "").toLowerCase() === n);
+  const hit = vs.find((v) => (v.name || "").toLowerCase().includes(n) || (v.title || "").toLowerCase().includes(n));
   return hit ? hit.id : "";
 }
 
@@ -36,7 +37,7 @@ export async function openTrackerImport() {
   const body = h("div", { class: "import" }, h("p", { class: "muted" }, "Lade Daten aus dem Zeittracker …"));
   const close = modal({ title: "Zeittracker-Daten übernehmen", body, wide: true });
   const data = await trackerData();
-  const vs = live("vorhaben").filter((v) => v.status !== "Idee");
+  const vs = assignableProjects();
   if (!data.entries.length) {
     body.replaceChildren(h("p", null, "Im Zeittracker sind (in diesem Browser und in der Cloud) keine Einträge gefunden worden."));
     return;
@@ -46,7 +47,7 @@ export async function openTrackerImport() {
     const done = entries.length ? live("timeEntries").find((e) => e.id === "trk_" + entries[0].id) : null;
     const sel = h("select", { class: "sel small", value: done ? done.vorhabenId : guess(p.name, vs), "aria-label": "Vorhaben für " + p.name },
       h("option", { value: "" }, "– nicht übernehmen –"),
-      vs.map((v) => h("option", { value: v.id }, (v.title || "Ohne Titel").slice(0, 80))));
+      vs.map((v) => h("option", { value: v.id }, vName(v))));
     return { p, entries, sel };
   }).filter((r) => r.entries.length);
   body.replaceChildren(
@@ -72,14 +73,30 @@ export async function openTrackerImport() {
       } }, "Übernehmen")));
 }
 
+/* ── Benachrichtigungen & Ton ── */
+function notifyBlock(redraw) {
+  const st = notifyState();
+  const label = { granted: "erlaubt ✓", denied: "blockiert", default: "noch nicht gefragt", unsupported: "von diesem Browser nicht unterstützt" }[st] || st;
+  return h("div", null,
+    h("p", { class: "small" }, "Systembenachrichtigung bei Ablauf eines Timers: ", h("strong", null, label)),
+    st === "denied" ? h("p", { class: "muted small" }, "Du hast Benachrichtigungen für diese Seite blockiert. Erlauben kannst du sie in den Website-Einstellungen des Browsers (Schloss-Symbol neben der Adresse).") : null,
+    st === "unsupported" ? h("p", { class: "muted small" }, "Auf dem iPhone gehen Benachrichtigungen nur, wenn die App über „Teilen → Zum Home-Bildschirm“ installiert und von dort geöffnet wird.") : null,
+    h("div", { class: "row-wrap" },
+      st === "default" ? h("button", { class: "btn primary", onclick: async () => { await requestNotify(); redraw(); } }, "Benachrichtigungen erlauben") : null,
+      st === "granted" ? h("button", { class: "btn", onclick: async () => {
+        const ok = await sysNotify("⏰ Test", "So sieht die Benachrichtigung aus, wenn ein Timer abläuft.");
+        if (!ok) toast("Benachrichtigung konnte nicht angezeigt werden");
+      } }, "Test-Benachrichtigung") : null,
+      h("button", { class: "btn", onclick: () => { ensureAudio(); unlockAudio(); ringNow(); setTimeout(cancelAlarm, 3000); } }, "Signalton testen (3 s)")),
+    h("p", { class: "muted small" }, "Tipp: Am Handy muss die App geöffnet bleiben (Bildschirm an), damit der Ton klingelt – bei gesperrtem Bildschirm unterdrücken iOS und Android Töne von Webseiten."));
+}
+
 /* ── Einstellungen-Dialog ── */
 export function openSettings() {
   const body = h("div", { class: "settings" });
   let close;
   const draw = () => {
     const s = settings();
-    const wip = h("input", { type: "number", min: "1", max: "20", class: "num-in", value: s.wipLimit || 3, "aria-label": "WIP-Grenze",
-      onchange: (e) => { const n = parseInt(e.target.value, 10); if (n > 0) setSingleton("settings", { ...settings(), wipLimit: n }); } });
     const newArea = h("input", { class: "txt", placeholder: "Neuer Bereich …", "aria-label": "Neuer Bereich" });
     const addArea = () => {
       const name = newArea.value.trim();
@@ -90,14 +107,10 @@ export function openSettings() {
     newArea.addEventListener("keydown", (e) => { if (e.key === "Enter") addArea(); });
 
     body.replaceChildren(
-      h("section", null, h("h4", null, "Fokus"),
-        h("label", { class: "inline-field" }, "Höchstens", wip, "Vorhaben gleichzeitig auf „Läuft“ (WIP-Grenze)")),
-      h("section", null, h("h4", null, "Persönliche Texte"),
-        h("p", { class: "muted small" }, "Werden in deiner Datenbank gespeichert (nicht im Code) und bei den Leitfragen zu „Ergebnis“ bzw. „Strategie-Bezug“ angezeigt."),
-        h("label", { class: "lbl" }, "Resistance oder Personal End Point? – deine Beschreibung"),
-        h("textarea", { class: "txt", rows: 5, value: s.resistanceText || "", placeholder: "Wie fühlt sich Resistance bei dir an – und wie dein Personal End Point?",
-          onchange: (e) => setSingleton("settings", { ...settings(), resistanceText: e.target.value.trim() }) }),
-        h("label", { class: "lbl" }, "Link zu deinen Zielen (z. B. Google-Drive-Ordner)"),
+      h("section", null, h("h4", null, "Benachrichtigungen & Ton"),
+        notifyBlock(draw)),
+      h("section", null, h("h4", null, "Link zu deinen Zielen"),
+        h("p", { class: "muted small" }, "Erscheint bei den Leitfragen zum „Strategie-Bezug“ (z. B. dein Google-Drive-Ordner). Wird in deiner Datenbank gespeichert, nicht im Code."),
         h("input", { class: "txt", type: "url", value: s.strategieLink || "", placeholder: "https://…",
           onchange: (e) => setSingleton("settings", { ...settings(), strategieLink: e.target.value.trim() }) })),
       h("section", null, h("h4", null, "Leitfragen"),
@@ -123,7 +136,7 @@ export function openSettings() {
         })),
       h("section", null, h("h4", null, "Bereiche"),
         areas().map((a) => {
-          const n = live("vorhaben").filter((v) => v.areaId === a.id).length;
+          const n = live("vorhaben").filter((v) => !v.system && v.areaId === a.id).length;
           return h("div", { class: "area-edit" },
             h("input", { class: "txt", value: a.name, "aria-label": "Bereichsname", onchange: (e) => { const t = e.target.value.trim(); if (t) patch("areas", a.id, { name: t }); } }),
             h("span", { class: "muted small" }, n + " Vorhaben"),

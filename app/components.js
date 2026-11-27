@@ -2,8 +2,9 @@
 
 import { h, icon, toast } from "./ui.js";
 import { STATUS, STATUS_LABEL, EST_OPTIONS, DEFAULT_EST, fmtShort, fmtHM, fmtClock, todayKey, diffDays } from "./model.js";
-import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify } from "./alarm.js";
-import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, pauseTimer, resumeTimer, elapsedMs, countdownEnd, patch, removeItem } from "./state.js";
+import { ensureAudio, scheduleAlarm, cancelAlarm, askNotify, unlockAudio } from "./alarm.js";
+import { store, byId, deadline, minutesTodo, toggleTodo, startTimer, stopTimer, pauseTimer, resumeTimer, elapsedMs, remainingMs, countdownEnd, patch, removeItem, vName } from "./state.js";
+import { openDoneTime } from "./timeentry.js";
 import { openVorhaben, persistUi } from "./nav.js";
 import { onlyHeadings } from "./editor.js";
 
@@ -57,9 +58,11 @@ export function startTimerUI({ vorhabenId, todoId = null, dur = null }) {
   startTimer({ vorhabenId, todoId, dur });
   if (dur) {
     ensureAudio();
-    scheduleAlarm(store.state.running.start + dur * 1000);
+    unlockAudio();
+    scheduleAlarm(countdownEnd());
     askNotify();
-    toast("Countdown läuft – " + Math.round(dur / 60) + " Min");
+    const r = store.state.running;
+    toast(r.offsetMs ? "Weiter bei „noch " + runClock(r) + "“" : "Countdown läuft – " + Math.round(dur / 60) + " Min");
   } else {
     cancelAlarm();
     toast("Stoppuhr läuft");
@@ -89,12 +92,12 @@ export function timerButton({ todoId = null, vorhabenId, dur = null, big = false
 // Anzeige des laufenden Timers: Countdown (Restzeit) oder Stoppuhr (gelaufene Zeit), ohne Pausen
 export function runClock(r) {
   // Countdown aufrunden (wie eine Küchenuhr: „4:00“ direkt nach dem Start einer Minute), Stoppuhr abrunden
-  return r.dur ? fmtClock(Math.ceil((r.dur * 1000 - elapsedMs(r)) / 1000)) : fmtClock(elapsedMs(r) / 1000);
+  return r.dur ? fmtClock(Math.ceil(remainingMs(r) / 1000)) : fmtClock(elapsedMs(r) / 1000);
 }
 export function runText(r) {
   return (r.pausedAt ? "pausiert · " : "") + (r.dur ? "noch " : "") + runClock(r);
 }
-export const runPct = (r) => (r.dur ? Math.min(100, (elapsedMs(r) / (r.dur * 1000)) * 100) : 0);
+export const runPct = (r) => (r.dur ? Math.min(100, (((r.offsetMs || 0) + elapsedMs(r)) / (r.dur * 1000)) * 100) : 0);
 
 export function pauseButton({ big = false } = {}) {
   const r = store.state.running;
@@ -125,8 +128,17 @@ export function estSelect(value, onchange, attrs) {
     EST_OPTIONS.map((m) => h("option", { value: String(m) }, m + " Min")));
 }
 
+// Abhaken: läuft der Timer daran, wird er gestoppt und gebucht; wurde noch keine
+// Zeit erfasst, fragt ein kurzes Feld nach der Dauer.
+export function completeTodo(t) {
+  if (isRunning(t.id)) { stopTimerUI(); toggleTodo(t.id, true); return; }
+  if (minutesTodo(t.id) < 1) { openDoneTime(t); return; }
+  toggleTodo(t.id, true);
+}
+
 export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
   const v = byId("vorhaben", t.vorhabenId);
+  const progress = !t.done && !isRunning(t.id) ? t.progressMs || 0 : 0;
   const min = minutesTodo(t.id);
   const title = editable
     ? h("input", {
@@ -137,22 +149,25 @@ export function todoRow(t, { showVorhaben = false, editable = false } = {}) {
     : h("div", { class: "todo-title" }, t.title);
   return h("div", { class: "todo" + (t.done ? " done" : "") + (isRunning(t.id) ? " running" : "") },
     h("label", { class: "chk" },
-      h("input", { type: "checkbox", checked: !!t.done, "aria-label": "Erledigt", onchange: (e) => toggleTodo(t.id, e.target.checked) }),
+      h("input", { type: "checkbox", checked: !!t.done, "aria-label": "Erledigt", onchange: (e) => (e.target.checked ? completeTodo(t) : toggleTodo(t.id, false)) }),
       h("span")),
     h("div", { class: "todo-main" },
       title,
-      showVorhaben && v ? h("a", { class: "todo-v", href: "#/v/" + v.id }, v.title || "Ohne Titel") : null),
+      showVorhaben && v ? (v.system ? h("span", { class: "todo-v" }, vName(v)) : h("a", { class: "todo-v", href: "#/v/" + v.id }, vName(v))) : null),
     editable
       ? h("input", { type: "date", class: "date-in small", value: t.due || "", "aria-label": "Fällig", onchange: (e) => patch("todos", t.id, { due: e.target.value }) })
       : t.due ? h("span", { class: "due " + dueClass(t.due, t.done) }, fmtShort(t.due)) : null,
     min >= 1 ? h("span", { class: "todo-min", title: "Erfasste Zeit" }, fmtHM(min)) : null,
+    progress > 0 ? h("span", { class: "todo-progress", title: "Angefangen – der Countdown läuft beim nächsten Start hier weiter" },
+      "noch " + fmtClock(Math.ceil(((t.est || DEFAULT_EST) * 60000 - progress) / 1000))) : null,
     estSelect(t.est, (m) => patch("todos", t.id, { est: m })),
     !t.done && v ? timerButton({ todoId: t.id, vorhabenId: t.vorhabenId, dur: (t.est || DEFAULT_EST) * 60 }) : null,
     editable ? h("button", { class: "icon-btn ghost", title: "To-Do löschen", "aria-label": "To-Do löschen", onclick: () => removeItem("todos", t.id) }, icon("trash")) : null);
 }
 
 export function vorhabenLink(v) {
-  return h("a", { class: "vlink", href: "#/v/" + v.id, onclick: (e) => { e.preventDefault(); openVorhaben(v.id); } }, v.title || "Ohne Titel");
+  if (v.system) return h("span", { class: "vlink" }, vName(v));
+  return h("a", { class: "vlink", href: "#/v/" + v.id, title: v.title || "", onclick: (e) => { e.preventDefault(); openVorhaben(v.id); } }, vName(v));
 }
 
 export function section(key, title, content, { ui, extra, count } = {}) {

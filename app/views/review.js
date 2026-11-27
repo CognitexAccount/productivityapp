@@ -15,15 +15,16 @@ export function reviewView() {
   const tk = todayKey();
   const from = addDays(weekStartKey(tk), 7 * ui.reviewOffset), to = addDays(from, 6);
   const fromMs = new Date(from + "T00:00:00").getTime(), toMs = new Date(to + "T23:59:59").getTime();
-  const vs = live("vorhaben").filter(inArea);
+  const all = live("vorhaben").filter((v) => v.system || inArea(v));
+  const vs = all.filter((v) => !v.system); // ohne „Sonstiges“ für Fristen, Aktivität, Ideen
 
-  const time = vs.map((v) => ({ v, min: minutesOf(v.id, from, to), target: v.weeklyTargetH ? v.weeklyTargetH * 60 : 0 }))
-    .filter((x) => x.min >= 1 || (x.target && isActive(x.v)))
+  const time = all.map((v) => ({ v, min: minutesOf(v.id, from, to) }))
+    .filter((x) => x.min >= 1)
     .sort((a, b) => b.min - a.min);
-  const max = Math.max(60, ...time.map((x) => Math.max(x.min, x.target)));
+  const max = Math.max(60, ...time.map((x) => x.min));
   const total = time.reduce((s, x) => s + x.min, 0);
 
-  const todos = live("todos").filter((t) => inArea(byId("vorhaben", t.vorhabenId)));
+  const todos = live("todos").filter((t) => { const v = byId("vorhaben", t.vorhabenId); return v && (v.system || inArea(v)); });
   const overdue = sortTodos(todos.filter((t) => !t.done && t.due && t.due < tk));
   const doneWeek = todos.filter((t) => t.done && t.doneAt >= fromMs && t.doneAt <= toMs);
   const idle = vs.filter((v) => isActive(v) && Date.now() - lastActivity(v.id) > 14 * 864e5);
@@ -53,13 +54,11 @@ export function reviewView() {
       card(String(doneWeek.length), "To-Dos erledigt"),
       card(String(overdue.length), "To-Dos überfällig", overdue.length ? "bad" : ""),
       card(String(ideas.length), "neue Ideen")),
-    section("r-time", "Zeit pro Vorhaben (Ist / Soll)", time.length
+    section("r-time", "Zeit pro Projekt", time.length
       ? h("div", { class: "bars" }, time.map((x) => h("div", { class: "barrow" },
           h("div", { class: "bar-lbl clamp2" }, vorhabenLink(x.v)),
-          h("div", { class: "bar" },
-            h("span", { class: "bar-fill" + (x.target && x.min >= x.target ? " ok" : ""), style: { width: (x.min / max) * 100 + "%" } }),
-            x.target ? h("span", { class: "bar-target", style: { left: (x.target / max) * 100 + "%" }, title: "Wochenziel " + fmtH(x.target) }) : null),
-          h("div", { class: "bar-val num" }, fmtHM(x.min) + (x.target ? " / " + fmtHM(x.target) : "")))),
+          h("div", { class: "bar" }, h("span", { class: "bar-fill", style: { width: (x.min / max) * 100 + "%" } })),
+          h("div", { class: "bar-val num" }, fmtHM(x.min) + " h"))),
           h("div", { class: "muted small right" }, "Summe zugeordnet: " + fmtHM(total) + " h"))
       : h("p", { class: "muted small" }, "In dieser Woche wurde noch keine Zeit erfasst."), { ui }),
     section("r-days", "Zeit pro Tag", h("div", { class: "days" }, days.map((x) => h("div", { class: "day" + (x.k === tk ? " today" : "") },

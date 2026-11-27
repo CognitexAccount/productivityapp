@@ -3,12 +3,12 @@
 
 import { h, icon } from "./ui.js";
 import { FIELDS } from "./model.js";
-import { byId, areaName } from "./state.js";
+import { byId, areaName, vName } from "./state.js";
 import { ui, openPanel, closePanel, openVorhaben } from "./nav.js";
 import { fieldEditor } from "./fields.js";
 import { statusPill } from "./components.js";
 
-const PANEL_FIELDS = [{ key: "titel", label: "Hypothese" }, ...FIELDS];
+const PANEL_FIELDS = [{ key: "name", label: "Projektname" }, { key: "titel", label: "Hypothese" }, ...FIELDS];
 
 // Aktives Feld in der Auswahl mittig sichtbar machen (nach dem Einhängen ins DOM aufrufen)
 export function centerActiveChip(root) {
@@ -32,8 +32,8 @@ export function panelView() {
   return h("aside", { class: "panel", role: "dialog", "aria-label": cur.label },
     h("div", { class: "panel-head" },
       h("div", { class: "panel-info" },
-        h("div", { class: "muted small" }, areaName(v.areaId) + (v.gruppe ? " · " + v.gruppe : ""), " ", statusPill(v.status)),
-        h("div", { class: "panel-title clamp2" }, v.title || "Ohne Titel")),
+        h("div", { class: "muted small" }, areaName(v.areaId), " ", statusPill(v.status)),
+        h("div", { class: "panel-title clamp2" }, vName(v))),
       h("button", { class: "icon-btn", "aria-label": "Panel schließen", onclick: closePanel }, icon("close"))),
     h("div", { class: "chipnav" },
       h("button", { class: "icon-btn ghost", title: "Vorheriges Feld", "aria-label": "Vorheriges Feld", disabled: idx === 0, onclick: () => go(idx - 1) }, icon("back")),

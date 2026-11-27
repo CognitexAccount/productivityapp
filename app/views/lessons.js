@@ -2,13 +2,13 @@
 
 import { h } from "../ui.js";
 import { fmtShort } from "../model.js";
-import { live, areaName } from "../state.js";
+import { projects, areaName, vName } from "../state.js";
 import { ui, openVorhaben } from "../nav.js";
 import { preview, statusPill } from "../components.js";
 import { sanitize } from "../editor.js";
 
 export function lessonsView() {
-  const items = live("vorhaben")
+  const items = projects()
     .filter((v) => preview((v.fields || {}).lessons) || preview((v.fields || {}).ergebnis))
     .sort((a, b) => ((b.end || "") > (a.end || "") ? 1 : -1));
   const results = h("div", { class: "lessons" });
@@ -16,14 +16,14 @@ export function lessonsView() {
   const draw = () => {
     const q = ui.lessonsQuery.trim().toLowerCase();
     results.replaceChildren();
-    const hits = items.filter((v) => !q || (v.title + " " + preview(v.fields.lessons) + " " + preview(v.fields.ergebnis)).toLowerCase().includes(q));
+    const hits = items.filter((v) => !q || ((v.name || "") + " " + (v.title || "") + " " + preview(v.fields.lessons) + " " + preview(v.fields.ergebnis)).toLowerCase().includes(q));
     if (!hits.length) {
       results.append(h("div", { class: "empty-state" }, items.length ? "Keine Treffer." : "Noch keine Lessons Learned erfasst. Sie entstehen beim Abschluss eines Vorhabens."));
       return;
     }
     hits.forEach((v) => results.append(h("article", { class: "lesson card-like" },
       h("div", { class: "lesson-head" },
-        h("button", { class: "link-btn strong", onclick: () => openVorhaben(v.id) }, v.title || "Ohne Titel"),
+        h("button", { class: "link-btn strong", title: v.title || "", onclick: () => openVorhaben(v.id) }, vName(v)),
         h("div", { class: "muted small" }, areaName(v.areaId), " · ", statusPill(v.status), v.end ? " · bis " + fmtShort(v.end) : "")),
       preview(v.fields.lessons) ? h("div", { class: "rich", html: sanitize(v.fields.lessons) }) : null,
       preview(v.fields.ergebnis) ? h("details", { class: "hints" }, h("summary", null, "Ergebnis"), h("div", { class: "rich", html: sanitize(v.fields.ergebnis) })) : null)));

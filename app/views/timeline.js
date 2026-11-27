@@ -2,8 +2,8 @@
 // und überzogene Laufzeiten.
 
 import { h } from "../ui.js";
-import { STATUS_LABEL, todayKey, addDays, diffDays, parseKey, dateKey, fmtShort, MONTHS } from "../model.js";
-import { live, areas, isActive, deadline } from "../state.js";
+import { STATUS, STATUS_LABEL, todayKey, addDays, diffDays, parseKey, dateKey, fmtShort, MONTHS } from "../model.js";
+import { projects, areas, deadline, vName } from "../state.js";
 import { ui, openVorhaben, rerender, persistUi } from "../nav.js";
 import { statusClass } from "../components.js";
 
@@ -16,7 +16,8 @@ function monthStart(k, add) {
 
 export function timelineView() {
   const tk = todayKey();
-  const vs = live("vorhaben").filter((v) => (ui.area === "all" || v.areaId === ui.area) && v.status !== "Idee");
+  const shownStatus = Array.isArray(ui.tlStatus) ? ui.tlStatus : STATUS.filter((x) => x !== "Idee");
+  const vs = projects().filter((v) => (ui.area === "all" || v.areaId === ui.area) && shownStatus.includes(v.status));
   const dated = vs.filter((v) => v.start || v.end);
   let from, to;
   if (ui.tlRange === "alle" && dated.length) {
@@ -34,7 +35,6 @@ export function timelineView() {
   const months = [];
   for (let k = from; k < to; k = monthStart(k, 1)) months.push(k);
 
-  const parallel = vs.filter((v) => isActive(v) && (!v.start || v.start <= tk) && (!v.end || v.end >= tk)).length;
 
   const header = h("div", { class: "tl-row tl-header" },
     h("div", { class: "tl-label" }),
@@ -70,7 +70,7 @@ export function timelineView() {
       body.append(h("div", { class: "tl-row" + (v.status === "Abgeschlossen" ? " is-done" : ""), onclick: () => openVorhaben(v.id), tabindex: "0",
         onkeydown: (ev) => { if (ev.key === "Enter") openVorhaben(v.id); } },
         h("div", { class: "tl-label" },
-          h("div", { class: "clamp2" }, v.title || "Ohne Titel"),
+          h("div", { class: "clamp2", title: v.title || "" }, vName(v)),
           h("div", { class: "muted tiny-txt" }, (STATUS_LABEL[v.status] || v.status) + (dl && dl.kind === "over" ? " · Frist überschritten" : ""))),
         track));
     });
@@ -83,11 +83,16 @@ export function timelineView() {
       h("div", { class: "seg" }, ["6m", "9m", "12m", "alle"].map((r) =>
         h("button", { class: "seg-btn" + (ui.tlRange === r ? " on" : ""), onclick: () => { ui.tlRange = r; persistUi(); rerender(); } },
           r === "alle" ? "Alles" : r.replace("m", " Monate")))),
-      h("div", { class: "spacer" }),
-      h("div", { class: "parallel" + (parallel > 3 ? " warn" : "") },
-        h("strong", null, String(parallel)), " Vorhaben heute parallel aktiv")),
+      h("div", { class: "status-filter", role: "group", "aria-label": "Nach Status filtern" },
+        h("span", { class: "muted small" }, "Status:"),
+        STATUS.map((st) => {
+          const on = shownStatus.includes(st);
+          return h("button", { class: "chip st-chip " + "st-" + STATUS.indexOf(st) + (on ? " on" : ""), "aria-pressed": on ? "true" : "false",
+            onclick: () => { ui.tlStatus = on ? shownStatus.filter((x) => x !== st) : [...shownStatus, st]; persistUi(); rerender(); } },
+            STATUS_LABEL[st] || st);
+        }))),
     dated.length ? h("div", { class: "timeline card-like" }, header, body) : h("div", { class: "empty-state" }, "Noch keine Vorhaben mit Laufzeit."),
     undated.length ? h("div", { class: "card-like undated" },
       h("div", { class: "lbl" }, "Ohne Laufzeit"),
-      undated.map((v) => h("button", { class: "chip", onclick: () => openVorhaben(v.id) }, v.title || "Ohne Titel"))) : null);
+      undated.map((v) => h("button", { class: "chip", onclick: () => openVorhaben(v.id) }, vName(v)))) : null);
 }

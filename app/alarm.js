@@ -21,10 +21,65 @@ export function ensureAudio() {
   return actx;
 }
 
-export function cancelAlarm() {
+/* Zweiter Weg für den Ton: ein echtes <audio>-Element mit erzeugtem WAV-Signal.
+   Wird bei sichtbarer Seite genutzt, weil iOS Web-Audio bei eingeschaltetem
+   Stummschalter verstummen lässt, normale Audio-Wiedergabe aber nicht. */
+let audioEl = null, audioStop = null;
+function beepWav() {
+  const rate = 22050, secs = 1.6, n = Math.floor(rate * secs);
+  const buf = new ArrayBuffer(44 + n * 2), d = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) d.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, "RIFF"); d.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); d.setUint32(16, 16, true);
+  d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, rate, true); d.setUint32(28, rate * 2, true);
+  d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, "data"); d.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    let v = 0;
+    [[0, 988], [0.22, 988], [0.44, 1320]].forEach(([s0, f]) => {
+      const x = t - s0;
+      if (x >= 0 && x < 0.18) v += Math.sin(2 * Math.PI * f * x) * Math.min(1, x / 0.01) * Math.max(0, 1 - x / 0.18);
+    });
+    d.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v * 0.8)) * 32767, true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+function getAudioEl() {
+  if (!audioEl) { audioEl = new Audio(beepWav()); audioEl.loop = true; audioEl.preload = "auto"; }
+  return audioEl;
+}
+// Im Klick auf „Start“ aufrufen: gibt die Wiedergabe für später frei (Autoplay-Regeln)
+export function unlockAudio() {
+  try {
+    const a = getAudioEl();
+    a.muted = true;
+    const p = a.play();
+    if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+  } catch (e) { /* egal */ }
+}
+// Jetzt klingeln (bei sichtbarer Seite): <audio>-Schleife für ALARM_SEC Sekunden
+export function ringNow() {
+  try {
+    const a = getAudioEl();
+    a.muted = false; a.currentTime = 0;
+    const p = a.play();
+    // Spielt das Audio-Element, den vorab geplanten Web-Audio-Ton abschalten (sonst doppelt)
+    if (p && p.then) p.then(stopOsc).catch(() => {});
+    clearTimeout(audioStop);
+    audioStop = setTimeout(() => { try { a.pause(); } catch (e) { /* egal */ } if (window.__alarm) window.__alarm.active = false; }, ALARM_SEC * 1000);
+    window.__alarm = { ...(window.__alarm || {}), active: true, audioEl: true, seconds: ALARM_SEC };
+  } catch (e) { /* egal */ }
+}
+
+function stopOsc() {
   try { if (osc) { osc.stop(); osc.disconnect(); } } catch (e) { /* schon gestoppt */ }
   try { if (gain) gain.disconnect(); } catch (e) { /* egal */ }
-  osc = null; gain = null; scheduledFor = 0;
+  osc = null; gain = null;
+}
+export function cancelAlarm() {
+  clearTimeout(audioStop);
+  try { if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; } } catch (e) { /* egal */ }
+  stopOsc();
+  scheduledFor = 0;
   if (window.__alarm) window.__alarm.active = false;
   try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) { /* egal */ }
 }
@@ -77,10 +132,22 @@ export function askNotify() {
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
   } catch (e) { /* egal */ }
 }
-export function notify(title, body) {
+export const notifyState = () => ("Notification" in window ? Notification.permission : "unsupported");
+export function requestNotify() {
   try {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, { body, icon: "/icons/icon-192.png", tag: "projektsystem-timer", requireInteraction: true });
+    if (!("Notification" in window)) return Promise.resolve("unsupported");
+    return Notification.requestPermission();
+  } catch (e) { return Promise.resolve("unsupported"); }
+}
+// Systembenachrichtigung – über den Service Worker (Pflicht bei Chrome auf Android), sonst direkt
+export async function notify(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return false;
+  const opts = { body, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", tag: "projektsystem-timer", renotify: true, requireInteraction: true, vibrate: [400, 200, 400, 200, 400] };
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) { await reg.showNotification(title, opts); return true; }
     }
-  } catch (e) { /* egal */ }
+  } catch (e) { /* weiter mit direktem Weg */ }
+  try { new Notification(title, opts); return true; } catch (e) { return false; }
 }

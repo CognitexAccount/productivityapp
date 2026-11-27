@@ -2,10 +2,11 @@
 
 import { h, icon, toast, confirmDialog } from "../ui.js";
 import { FIELDS, DEFAULT_EST, todayKey, weekStartKey, addDays, fmtDate, fmtHM, fmtH, diffDays } from "../model.js";
-import { byId, live, areas, patch, removeItem, todosOf, minutesOf, addTodo, addEntry, sortTodos } from "../state.js";
+import { byId, live, areas, patch, removeItem, todosOf, minutesOf, addTodo, addEntry, sortTodos, vName } from "../state.js";
 import { ui, go, rerender } from "../nav.js";
 import { statusSelect, deadlineBadge, todoRow, timerButton, section, changeStatus, estSelect } from "../components.js";
 import { fieldEditor, titleEditor } from "../fields.js";
+import { autoText } from "../editor.js";
 import { downloadPdf, sendToDrive, preloadDrive } from "../export.js";
 import { openTimeEntry } from "../timeentry.js";
 
@@ -46,7 +47,6 @@ function timeBlock(v) {
   const wk = weekStartKey(todayKey());
   const week = minutesOf(v.id, wk, addDays(wk, 6));
   const total = minutesOf(v.id);
-  const target = v.weeklyTargetH ? v.weeklyTargetH * 60 : 0;
   const entries = live("timeEntries").filter((e) => e.vorhabenId === v.id)
     .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.start || 0) - (a.start || 0));
   const showAll = !!ui.collapsed["entries-" + v.id];
@@ -66,13 +66,7 @@ function timeBlock(v) {
   return h("div", { class: "timeblock" },
     h("div", { class: "stats" },
       h("div", { class: "stat" }, h("div", { class: "stat-num" }, fmtH(total)), h("div", { class: "stat-lbl" }, "investiert gesamt")),
-      h("div", { class: "stat" + (target && week >= target ? " ok" : "") },
-        h("div", { class: "stat-num" }, fmtH(week) + (target ? " / " + fmtH(target) : "")),
-        h("div", { class: "stat-lbl" }, "diese Woche" + (target ? " (Soll/Ist)" : ""))),
-      h("label", { class: "stat edit" },
-        h("input", { type: "number", min: "0", step: "0.5", class: "num-in", value: v.weeklyTargetH || "", placeholder: "–",
-          onchange: (e) => patch("vorhaben", v.id, { weeklyTargetH: parseFloat(e.target.value) || null }) }),
-        h("div", { class: "stat-lbl" }, "Wochenziel (h)"))),
+      h("div", { class: "stat" }, h("div", { class: "stat-num" }, fmtH(week)), h("div", { class: "stat-lbl" }, "diese Woche"))),
     entries.length ? h("div", { class: "entries" },
       (showAll ? entries : entries.slice(0, 6)).map((e) => {
         const t = e.todoId ? byId("todos", e.todoId) : null;
@@ -101,8 +95,6 @@ export function docView(vid) {
 
   const areaSel = h("select", { class: "sel small", value: v.areaId, "aria-label": "Bereich", onchange: (e) => patch("vorhaben", v.id, { areaId: e.target.value }) },
     areas().map((a) => h("option", { value: a.id }, a.name)));
-  const gruppe = h("input", { class: "txt small", value: v.gruppe || "", placeholder: "Gruppe (z. B. Cognitex)", "aria-label": "Gruppe",
-    onchange: (e) => patch("vorhaben", v.id, { gruppe: e.target.value.trim() }) });
   const dur = v.start && v.end ? diffDays(v.start, v.end) : null;
 
   const open = todosOf(v.id).filter((t) => !t.done).length;
@@ -125,8 +117,11 @@ export function docView(vid) {
       h("button", { class: "btn small", title: "Zeit nachtragen", onclick: () => openTimeEntry(v.id) }, icon("clock"), h("span", { class: "hide-sm" }, "Zeit nachtragen")),
       timerButton({ vorhabenId: v.id, label: "Stoppuhr" })),
     h("div", { class: "doc-head card-like" },
-      h("div", { class: "doc-meta" }, areaSel, gruppe, statusSelect(v), deadlineBadge(v)),
-      titleEditor(v, { big: true }),
+      h("div", { class: "doc-meta" }, areaSel, statusSelect(v), deadlineBadge(v)),
+      h("label", { class: "lbl" }, "Projektname"),
+      autoText({ value: v.name || "", cls: "title-edit big name-edit", onChange: (val) => patch("vorhaben", v.id, { name: val }, { silent: true }) }),
+      h("label", { class: "lbl" }, "Hypothese"),
+      titleEditor(v),
       h("div", { class: "doc-meta" },
         h("label", { class: "inline-field" }, "Laufzeit ab", h("input", { type: "date", class: "date-in", value: v.start || "", onchange: (e) => patch("vorhaben", v.id, { start: e.target.value }) })),
         h("label", { class: "inline-field" }, "bis", h("input", { type: "date", class: "date-in", value: v.end || "", onchange: (e) => patch("vorhaben", v.id, { end: e.target.value }) })),
@@ -135,7 +130,7 @@ export function docView(vid) {
     h("div", { class: "doc-sections" }, sections),
     h("div", { class: "doc-danger" },
       h("button", { class: "btn ghost danger-txt", onclick: async () => {
-        if (await confirmDialog("Vorhaben „" + (v.title || "Ohne Titel").slice(0, 80) + "“ mit allen To-Dos löschen? Erfasste Zeiten bleiben erhalten.", { ok: "Löschen", danger: true })) {
+        if (await confirmDialog("Vorhaben „" + vName(v) + "“ mit allen To-Dos löschen? Erfasste Zeiten bleiben erhalten.", { ok: "Löschen", danger: true })) {
           live("todos").filter((t) => t.vorhabenId === v.id).forEach((t) => removeItem("todos", t.id, { silent: true }));
           removeItem("vorhaben", v.id);
           go("#/board");

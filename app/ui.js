@@ -70,6 +70,11 @@ export function toast(msg) {
 }
 
 export function modal({ title, body, actions = [], wide = false, onClose }) {
+  // Ein Dialog liegt über allem: offenes Eingabefeld der Seite verlassen, damit zurückgehaltene
+  // Aktualisierungen (z. B. „To-Do erledigt“) sofort sichtbar werden – Safari/iOS fokussieren
+  // beim Tippen auf Buttons nicht um, das Feld bliebe sonst „in Bearbeitung“.
+  const act = document.activeElement;
+  if (act && act !== document.body && act.closest && act.closest("#app") && act.blur) act.blur();
   const back = h("div", { class: "modal-back" });
   let closed = false;
   const close = () => {

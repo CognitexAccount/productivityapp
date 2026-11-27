@@ -10,7 +10,7 @@
 
 import { h, modal, toast } from "./ui.js";
 import { FIELDS, ERFOLG_PARTS, STATUS_LABEL, DEFAULT_EST, todayKey, fmtDate, fmtShort, fmtH, fmtHM } from "./model.js";
-import { byId, live, areaName, todosOf, minutesOf, store } from "./state.js";
+import { byId, live, areaName, todosOf, minutesOf, store, vName } from "./state.js";
 import { sanitize } from "./editor.js";
 
 /* ── Hilfen ── */
@@ -42,7 +42,7 @@ export function preloadDrive() {
 }
 
 function fileName(v) {
-  const base = (v.title || "Vorhaben").replace(/[\\/:*?"<>|\n\r]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 70);
+  const base = (vName(v) || "Vorhaben").replace(/[\\/:*?"<>|\n\r]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 70);
   return base + " – " + todayKey() + ".pdf";
 }
 // Für Downloads: nur ASCII – manche Browser verwerfen sonst den Namen und speichern als „download“
@@ -105,13 +105,14 @@ export async function buildPdf(vid) {
   const v = byId("vorhaben", vid);
   if (!v) throw new Error("Vorhaben nicht gefunden");
   const content = [];
-  content.push({ text: areaName(v.areaId) + (v.gruppe ? " · " + v.gruppe : ""), style: "crumb" });
-  content.push({ text: v.title || "Ohne Titel", style: "title" });
+  content.push({ text: areaName(v.areaId), style: "crumb" });
+  content.push({ text: vName(v), style: "title" });
+  if (v.name && v.title) content.push({ text: [{ text: "Hypothese: ", bold: true }, v.title], margin: [0, 0, 0, 10] });
   const total = minutesOf(v.id);
   const meta = [
     ["Status", STATUS_LABEL[v.status] || v.status],
     ["Laufzeit", (v.start ? fmtDate(v.start) : "–") + "  bis  " + (v.end ? fmtDate(v.end) : "–")],
-    ["Investierte Zeit", fmtH(total) + (v.weeklyTargetH ? "  (Wochenziel " + String(v.weeklyTargetH).replace(".", ",") + " h)" : "")],
+    ["Investierte Zeit", fmtH(total)],
   ];
   content.push({ table: { widths: [110, "*"], body: meta.map(([k, val]) => [{ text: k, style: "metaKey" }, { text: val }]) }, layout: "noBorders", margin: [0, 0, 0, 12] });
 
@@ -146,7 +147,7 @@ export async function buildPdf(vid) {
   });
 
   const docDef = {
-    info: { title: v.title || "Vorhaben", creator: "Projektsystem" },
+    info: { title: vName(v), creator: "Projektsystem" },
     pageSize: "A4", pageMargins: [50, 50, 50, 60],
     content,
     footer: (page, count) => ({ text: "Projektsystem · Stand " + fmtDate(todayKey()) + " · Seite " + page + " von " + count, alignment: "center", fontSize: 8, color: "#8a929e", margin: [0, 18, 0, 0] }),
@@ -262,14 +263,14 @@ export async function sendToDrive(vid) {
 
 /* ── CSV der Zeiteinträge (für deutsches Excel) ── */
 export function downloadCsv(fromKey, toKey) {
-  const rows = [["Datum", "Vorhaben", "Bereich", "To-Do", "Minuten", "Stunden", "Notiz", "Quelle"]];
+  const rows = [["Datum", "Projekt", "Bereich", "To-Do", "Minuten", "Stunden", "Notiz", "Quelle"]];
   live("timeEntries")
     .filter((e) => (!fromKey || e.date >= fromKey) && (!toKey || e.date <= toKey))
     .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.start || 0) - (b.start || 0))
     .forEach((e) => {
       const v = byId("vorhaben", e.vorhabenId) || store.state.vorhaben.find((x) => x.id === e.vorhabenId) || {};
       const t = e.todoId ? byId("todos", e.todoId) : null;
-      rows.push([e.date, v.title || "(gelöscht)", v.areaId ? areaName(v.areaId) : "", t ? t.title : "",
+      rows.push([e.date, v.id ? vName(v) : "(gelöscht)", v.areaId ? areaName(v.areaId) : "", t ? t.title : "",
         String(Math.round(e.min || 0)), ((e.min || 0) / 60).toFixed(2).replace(".", ","),
         (e.note || "").replace(/[\r\n]+/g, " "), e.source === "tracker" ? "alter Zeittracker" : e.manual ? "nachgetragen" : "Timer"]);
     });

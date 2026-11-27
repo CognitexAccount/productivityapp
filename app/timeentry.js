@@ -1,18 +1,31 @@
-// „Zeit nachtragen“ – von überall erreichbar (übernommen aus dem alten Zeittracker).
+// Zeit erfassen ohne Timer: „Zeit nachtragen“ (von überall) und die Frage nach
+// der Dauer beim Abhaken eines To-Dos, das nicht über den Timer lief.
 
 import { h, modal, toast } from "./ui.js";
-import { todayKey, fmtHM } from "./model.js";
-import { live, isActive, addEntry, sortTodos } from "./state.js";
+import { todayKey, fmtHM, DEFAULT_EST } from "./model.js";
+import { live, addEntry, sortTodos, toggleTodo, assignableProjects, vName, notify } from "./state.js";
 import { ui } from "./nav.js";
 
-export function openTimeEntry(preVid) {
-  const vs = live("vorhaben").filter((v) => v.status !== "Idee")
-    .sort((a, b) => (isActive(b) ? 1 : 0) - (isActive(a) ? 1 : 0) || (a.title || "").localeCompare(b.title || ""));
-  if (!vs.length) { toast("Lege zuerst ein Vorhaben an."); return; }
-  const start = preVid && vs.some((v) => v.id === preVid) ? preVid : (ui.lastVorhaben && vs.some((v) => v.id === ui.lastVorhaben) ? ui.lastVorhaben : vs[0].id);
+function durationInputs(preset) {
+  const hh = h("input", { type: "number", class: "num-in", min: "0", max: "24", value: String(Math.floor(preset / 60)), "aria-label": "Stunden", inputmode: "numeric" });
+  const mm = h("input", { type: "number", class: "num-in", min: "0", max: "59", value: String(preset % 60), "aria-label": "Minuten", inputmode: "numeric" });
+  const chips = h("div", { class: "row-wrap" },
+    [5, 15, 30, 45, 60, 90, 120].map((m) => h("button", { type: "button", class: "chip" + (m === preset ? " on" : ""), onclick: (e) => {
+      hh.value = Math.floor(m / 60); mm.value = m % 60;
+      chips.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
+      e.currentTarget.classList.add("on");
+    } }, m < 60 ? m + " Min" : (m / 60).toLocaleString("de-DE") + " h")));
+  const read = () => (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
+  return { hh, mm, chips, read };
+}
 
-  const vSel = h("select", { class: "sel", value: start, "aria-label": "Vorhaben" },
-    vs.map((v) => h("option", { value: v.id }, (v.title || "Ohne Titel").slice(0, 90))));
+export function openTimeEntry(preVid) {
+  const vs = assignableProjects();
+  if (!vs.length) { toast("Lege zuerst ein Vorhaben an."); return; }
+  const has = (id) => vs.some((v) => v.id === id);
+  const start = preVid && has(preVid) ? preVid : ui.lastVorhaben && has(ui.lastVorhaben) ? ui.lastVorhaben : vs[0].id;
+
+  const vSel = h("select", { class: "sel", value: start, "aria-label": "Projekt" }, vs.map((v) => h("option", { value: v.id }, vName(v))));
   const tSel = h("select", { class: "sel", "aria-label": "To-Do" });
   const fillTodos = () => {
     tSel.replaceChildren(h("option", { value: "" }, "– ohne To-Do –"),
@@ -21,14 +34,11 @@ export function openTimeEntry(preVid) {
   vSel.addEventListener("change", fillTodos);
   fillTodos();
   const date = h("input", { type: "date", class: "date-in", value: todayKey(), "aria-label": "Datum" });
-  const hh = h("input", { type: "number", class: "num-in", min: "0", max: "24", value: "0", "aria-label": "Stunden", inputmode: "numeric" });
-  const mm = h("input", { type: "number", class: "num-in", min: "0", max: "59", value: "30", "aria-label": "Minuten", inputmode: "numeric" });
+  const d = durationInputs(30);
   const note = h("input", { class: "txt", placeholder: "z. B. Investoren-Call", "aria-label": "Notiz" });
-  const quick = h("div", { class: "row-wrap" }, h("span", { class: "muted small" }, "Schnell:"),
-    [15, 30, 45, 60, 90, 120].map((m) => h("button", { type: "button", class: "chip", onclick: () => { hh.value = Math.floor(m / 60); mm.value = m % 60; } }, m < 60 ? m + " Min" : (m / 60).toLocaleString("de-DE") + " h")));
 
   const save = (close) => {
-    const min = (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
+    const min = d.read();
     if (min <= 0) { toast("Bitte eine Dauer größer als 0 angeben."); return; }
     ui.lastVorhaben = vSel.value;
     addEntry({ vorhabenId: vSel.value, todoId: tSel.value || null, date: date.value || todayKey(), min, note: note.value.trim() });
@@ -38,14 +48,45 @@ export function openTimeEntry(preVid) {
   modal({
     title: "Zeit nachtragen",
     body: h("div", { class: "form-grid" },
-      h("label", { class: "f" }, h("span", null, "Vorhaben"), vSel),
+      h("label", { class: "f" }, h("span", null, "Projekt"), vSel),
       h("label", { class: "f" }, h("span", null, "To-Do (optional)"), tSel),
       h("div", { class: "f-row" },
         h("label", { class: "f" }, h("span", null, "Datum"), date),
-        h("label", { class: "f" }, h("span", null, "Stunden"), hh),
-        h("label", { class: "f" }, h("span", null, "Minuten"), mm)),
-      quick,
+        h("label", { class: "f" }, h("span", null, "Stunden"), d.hh),
+        h("label", { class: "f" }, h("span", null, "Minuten"), d.mm)),
+      d.chips,
       h("label", { class: "f" }, h("span", null, "Notiz (optional)"), note)),
     actions: [{ label: "Abbrechen", onClick: (c) => c() }, { label: "Eintragen", primary: true, onClick: save }],
+  });
+}
+
+// Beim Abhaken ohne vorherigen Timer: kurz die tatsächliche Dauer erfragen
+export function openDoneTime(t) {
+  const d = durationInputs(t.est || DEFAULT_EST);
+  let decided = false;
+  const finish = (close, withTime) => {
+    decided = true;
+    if (withTime) {
+      const min = d.read();
+      if (min <= 0) { toast("Bitte eine Dauer angeben – oder „Ohne Zeit abhaken“."); decided = false; return; }
+      addEntry({ vorhabenId: t.vorhabenId, todoId: t.id, date: todayKey(), min });
+      toast("Erledigt – " + fmtHM(min) + " h gebucht");
+    } else toast("Erledigt");
+    toggleTodo(t.id, true);
+    close();
+  };
+  modal({
+    title: "Wie lange hat das gedauert?",
+    body: h("div", { class: "form-grid" },
+      h("p", { class: "done-what" }, t.title),
+      d.chips,
+      h("div", { class: "f-row" },
+        h("label", { class: "f" }, h("span", null, "Stunden"), d.hh),
+        h("label", { class: "f" }, h("span", null, "Minuten"), d.mm))),
+    actions: [
+      { label: "Ohne Zeit abhaken", onClick: (c) => finish(c, false) },
+      { label: "Abhaken & buchen", primary: true, onClick: (c) => finish(c, true) },
+    ],
+    onClose: () => { if (!decided) notify(); }, // abgebrochen → Häkchen zurücksetzen
   });
 }

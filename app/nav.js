@@ -12,12 +12,13 @@ export const ui = {
   panel: null,            // { vid, field }
   reviewOffset: 0,
   tlRange: saved.tlRange || "9m",
+  tlStatus: Array.isArray(saved.tlStatus) ? saved.tlStatus : null,
   lessonsQuery: "",
   boardDoneOpen: false,
 };
 export function persistUi() {
   try {
-    localStorage.setItem(UIKEY, JSON.stringify({ area: ui.area, showDone: ui.showDone, collapsed: ui.collapsed, tlRange: ui.tlRange }));
+    localStorage.setItem(UIKEY, JSON.stringify({ area: ui.area, showDone: ui.showDone, collapsed: ui.collapsed, tlRange: ui.tlRange, tlStatus: ui.tlStatus }));
   } catch (e) { /* ignorieren */ }
 }
 
